@@ -1,0 +1,11 @@
+services:
+  sourcescout-mcp:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      PROJECTS_CONFIG_PATH: /config/projects.yml
+      CODE_MCP_TOKEN: local-dev-token
+    volumes:
+      - ./config/projects.example.yml:/config/projects.yml:ro
+      - ./workspace:/workspace
