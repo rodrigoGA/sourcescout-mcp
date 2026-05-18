@@ -93,7 +93,7 @@ spec:
     spec:
       containers:
         - name: sourcescout-mcp
-          image: sourcescout-mcp:0.1.0
+          image: sourcescout-mcp:0.0.1
           ports:
             - containerPort: 8080
           env:

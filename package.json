@@ -1,6 +1,6 @@
 {
   "name": "sourcescout-mcp",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "description": "SourceScout MCP exposes read-only code search, file inspection, Probe, and Git utilities over MCP HTTP.",
   "type": "module",
   "private": true,

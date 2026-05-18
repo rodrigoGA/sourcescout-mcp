@@ -137,7 +137,7 @@ async function getHealth(context: HttpServerContext): Promise<Record<string, unk
 
   return {
     status: "ok",
-    version: "0.1.0",
+    version: "0.0.1",
     probe: {
       available: probe.exitCode === 0,
       version: probe.stdout.trim() || probe.stderr.trim(),

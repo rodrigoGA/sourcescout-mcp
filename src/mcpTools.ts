@@ -45,7 +45,7 @@ export function buildMcpServer(
 ): McpServer {
   const server = new McpServer({
     name: config.server.name,
-    version: "0.1.0",
+    version: "0.0.1",
   });
 
   const fileAdapter = new FileAdapter(config);
