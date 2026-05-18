@@ -2,6 +2,7 @@
 
 This is the baseline production shape for SourceScout MCP. It keeps the manifest small:
 
+- Docker image: `rogo16/sourcescout-mcp:v0.0.1`
 - a `ConfigMap` for `projects.yml`
 - a bearer token `Secret`
 - an optional SSH deploy key `Secret`
@@ -93,7 +94,7 @@ spec:
     spec:
       containers:
         - name: sourcescout-mcp
-          image: sourcescout-mcp:0.0.1
+          image: rogo16/sourcescout-mcp:v0.0.1
           ports:
             - containerPort: 8080
           env:

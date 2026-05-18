@@ -119,13 +119,18 @@ limits:
 
 ## Docker
 
+Published image:
+
 ```bash
-docker build -t sourcescout-mcp:local .
+docker pull rogo16/sourcescout-mcp:v0.0.1
+```
+
+```bash
 docker run --rm -p 8080:8080 \
   -v "$PWD/config/projects.example.yml:/config/projects.yml:ro" \
   -v "$PWD/workspace:/workspace" \
   -e PROJECTS_CONFIG_PATH=/config/projects.yml \
-  sourcescout-mcp:local
+  rogo16/sourcescout-mcp:v0.0.1
 ```
 
 The image includes Node 22, Probe, Git, OpenSSH client, CA certificates, ripgrep, and tini.
@@ -143,7 +148,7 @@ The image uses OpenSSH `StrictHostKeyChecking=accept-new` by default and stores 
 
 Keep `/live` and `/ready` unauthenticated for platform probes. Protect `/mcp` with bearer auth in non-local deployments.
 
-See `docs/kubernetes.md` for a complete baseline manifest.
+See [docs/kubernetes.md](docs/kubernetes.md) for a complete baseline manifest.
 
 
 ## Claude / Agent Integration
@@ -158,7 +163,7 @@ docker run --rm -p 8080:8080 \
   -v "$PWD/workspace:/workspace" \
   -e PROJECTS_CONFIG_PATH=/config/projects.yml \
   -e CODE_MCP_TOKEN=change-me \
-  sourcescout-mcp:local
+  rogo16/sourcescout-mcp:v0.0.1
 ```
 
 Add it to Claude Code:
@@ -272,7 +277,7 @@ docker run --rm -p 8080:8080 \
   -v "$PWD/workspace:/workspace" \
   -v "$PWD/secrets/id_ed25519:/run/secrets/sourcescout/id_ed25519:ro" \
   -e CODE_MCP_TOKEN=change-me \
-  sourcescout-mcp:local
+  rogo16/sourcescout-mcp:v0.0.1
 ```
 
 The image copies the key into `/home/node/.ssh/id_ed25519`, fixes permissions, and uses `StrictHostKeyChecking=accept-new` with `/workspace/state/known_hosts`.
@@ -324,7 +329,7 @@ docker run --rm -p 8080:8080 \
   -v "$PWD/workspace:/workspace" \
   -v "$PWD/secrets/netrc:/run/secrets/sourcescout/netrc:ro" \
   -e CODE_MCP_TOKEN=change-me \
-  sourcescout-mcp:local
+  rogo16/sourcescout-mcp:v0.0.1
 ```
 
 Token guidance:
