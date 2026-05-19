@@ -131,13 +131,15 @@ export function buildMcpServer(
             .int()
             .positive()
             .optional()
-            .describe("Maximum number of results to return."),
+            .default(config.probe.default_search_max_results)
+            .describe(`Maximum number of results to return. Defaults to ${config.probe.default_search_max_results}, matching Probe MCP defaults.`),
           maxTokens: z
             .number()
             .int()
             .positive()
             .optional()
-            .describe("Maximum total tokens in code content to return."),
+            .default(config.probe.default_search_max_tokens)
+            .describe(`Maximum total tokens in code content to return. Defaults to ${config.probe.default_search_max_tokens}, matching Probe MCP defaults.`),
           exact: z
             .boolean()
             .optional()

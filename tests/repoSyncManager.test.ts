@@ -51,7 +51,9 @@ exit 0
         {
           id: "app",
           name: "App",
-          repo_url: "git@example.com:org/app.git",
+          git: {
+            url: "git@example.com:org/app.git",
+          },
           branch: "main",
           enabled: true,
         },

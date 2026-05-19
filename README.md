@@ -72,10 +72,16 @@ auth:
   type: bearer
   token_env: CODE_MCP_TOKEN
 
+probe:
+  binary: probe
+  default_search_max_results: 20
+  default_search_max_tokens: 8000
+
 projects:
   - id: backend
     name: Backend API
-    repo_url: git@gitlab.example.com:org/backend.git
+    git:
+      url: git@gitlab.example.com:org/backend.git
     branch: main
     enabled: true
 
@@ -86,7 +92,7 @@ projects:
     enabled: true
 ```
 
-Use `repo_url` for SourceScout-managed clones. Use `local_path` for mounted repos. SourceScout never deletes a configured `local_path`; `reclone_on_sync_failure` only applies to managed clones under `workspace.root`.
+Use `git.url` for SourceScout-managed clones. Use `local_path` for mounted repos. SourceScout never deletes a configured `local_path`; `reclone_on_sync_failure` only applies to managed clones under `workspace.root`.
 
 ### Probe Results and Pagination
 
@@ -98,7 +104,7 @@ For deeper exploration, agents should issue narrower or follow-up queries, use `
 
 The config separates command settings from hard caps:
 
-- `probe`: Probe binary setting.
+- `probe`: Probe binary setting and SourceScout's Probe search defaults. `search_code` defaults match Probe MCP: `default_search_max_results: 20` and `default_search_max_tokens: 8000`.
 - `git`: Git-specific defaults, currently `timeout_seconds` and `default_log_limit`.
 - `limits`: global safety caps across tools.
 
@@ -122,7 +128,7 @@ limits:
 Published image:
 
 ```bash
-docker pull rogo16/sourcescout-mcp:v0.0.1
+docker pull rogo16/sourcescout-mcp:v0.0.3
 ```
 
 ```bash
@@ -130,7 +136,7 @@ docker run --rm -p 8080:8080 \
   -v "$PWD/config/projects.example.yml:/config/projects.yml:ro" \
   -v "$PWD/workspace:/workspace" \
   -e PROJECTS_CONFIG_PATH=/config/projects.yml \
-  rogo16/sourcescout-mcp:v0.0.1
+  rogo16/sourcescout-mcp:v0.0.3
 ```
 
 The image includes Node 22, Probe, Git, OpenSSH client, CA certificates, ripgrep, and tini.
@@ -163,7 +169,7 @@ docker run --rm -p 8080:8080 \
   -v "$PWD/workspace:/workspace" \
   -e PROJECTS_CONFIG_PATH=/config/projects.yml \
   -e CODE_MCP_TOKEN=change-me \
-  rogo16/sourcescout-mcp:v0.0.1
+  rogo16/sourcescout-mcp:v0.0.3
 ```
 
 Add it to Claude Code:
@@ -234,7 +240,7 @@ SourceScout receives normal Git clone URLs. Use the same protocol you would use 
 Recommended order:
 
 - **SSH deploy key** for private repos when your provider supports it.
-- **HTTPS token via `.netrc`** when SSH is not practical.
+- **HTTPS token via mounted `kubernetes.io/basic-auth` Secret** when SSH is not practical on Kubernetes.
 - **Token in the URL** only for local experiments or short-lived automation, because Git can persist the remote URL inside `.git/config`.
 
 ### Public HTTPS Repository
@@ -245,7 +251,8 @@ No credentials are required.
 projects:
   - id: probe
     name: Probe
-    repo_url: https://github.com/probelabs/probe.git
+    git:
+      url: https://github.com/probelabs/probe.git
     branch: main
     enabled: true
 ```
@@ -258,13 +265,21 @@ Prefer a read-only deploy key or a read-only machine-user SSH key.
 projects:
   - id: backend
     name: Backend API
-    repo_url: git@gitlab.example.com:org/backend.git
+    git:
+      url: git@gitlab.example.com:org/backend.git
+      auth:
+        type: ssh
+        path: /run/secrets/sourcescout/git-auth/gitlab
     branch: main
     enabled: true
 
   - id: service
     name: GitHub Service
-    repo_url: git@github.com:company/service.git
+    git:
+      url: git@github.com:company/service.git
+      auth:
+        type: ssh
+        path: /run/secrets/sourcescout/git-auth/github
     branch: main
     enabled: true
 ```
@@ -275,67 +290,70 @@ Docker example:
 docker run --rm -p 8080:8080 \
   -v "$PWD/config/projects.yml:/config/projects.yml:ro" \
   -v "$PWD/workspace:/workspace" \
-  -v "$PWD/secrets/id_ed25519:/run/secrets/sourcescout/id_ed25519:ro" \
+  -v "$PWD/secrets/gitlab-ssh:/run/secrets/sourcescout/git-auth/gitlab:ro" \
   -e CODE_MCP_TOKEN=change-me \
-  rogo16/sourcescout-mcp:v0.0.1
+  rogo16/sourcescout-mcp:v0.0.3
 ```
 
-The image copies the key into `/home/node/.ssh/id_ed25519`, fixes permissions, and uses `StrictHostKeyChecking=accept-new` with `/workspace/state/known_hosts`.
+The image copies mounted Git auth Secret files into `/home/node/.sourcescout-git-auth`, fixes permissions, and uses `StrictHostKeyChecking=accept-new` with project-specific `known_hosts` files.
 
 ### Private Repository With HTTPS Token
 
-Use `.netrc` when you want HTTPS credentials without putting tokens in `projects.yml`.
+On Kubernetes, use per-project `git.auth` with a mounted `kubernetes.io/basic-auth` Secret. SourceScout reads the mounted Secret files and configures Git for that project before cloning, so the token is not placed in `projects.yml`, repo URLs, or cloned repository remotes.
 
 ```yaml
 projects:
   - id: github-private
     name: GitHub Private Repo
-    repo_url: https://github.com/company/private-repo.git
+    git:
+      url: https://github.com/company/private-repo.git
+      auth:
+        type: httpsToken
+        path: /run/secrets/sourcescout/git-auth/github
     branch: main
     enabled: true
 
   - id: gitlab-private
     name: GitLab Private Repo
-    repo_url: https://gitlab.example.com/org/private-repo.git
+    git:
+      url: https://gitlab.example.com/org/private-repo.git
+      auth:
+        type: httpsToken
+        path: /run/secrets/sourcescout/git-auth/gitlab
     branch: main
     enabled: true
 ```
 
-Example `.netrc`:
+Example Kubernetes Secret:
 
-```netrc
-machine github.com
-  login YOUR_GITHUB_USERNAME
-  password YOUR_GITHUB_FINE_GRAINED_PAT
-
-machine gitlab.example.com
-  login YOUR_GITLAB_DEPLOY_TOKEN_USERNAME
-  password YOUR_GITLAB_DEPLOY_TOKEN
-
-machine bitbucket.org
-  login YOUR_BITBUCKET_USERNAME
-  password YOUR_BITBUCKET_APP_PASSWORD_OR_API_TOKEN
-
-machine gitea.example.com
-  login YOUR_GITEA_USERNAME
-  password YOUR_GITEA_TOKEN
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: sourcescout-git-auth
+type: kubernetes.io/basic-auth
+stringData:
+  username: YOUR_GIT_USERNAME
+  password: YOUR_READ_ONLY_TOKEN
 ```
 
-Docker example:
+Mount each Secret under `/run/secrets/sourcescout/git-auth/<name>` and point the matching project auth `path` there. The entrypoint copies mounted Git auth Secrets into `/home/node/.sourcescout-git-auth` with `0600` permissions before the process drops to the `node` user.
+
+For Docker or other non-Kubernetes deployments, a mounted `git-credentials` file is also supported:
 
 ```bash
 docker run --rm -p 8080:8080 \
   -v "$PWD/config/projects.yml:/config/projects.yml:ro" \
   -v "$PWD/workspace:/workspace" \
-  -v "$PWD/secrets/netrc:/run/secrets/sourcescout/netrc:ro" \
+  -v "$PWD/secrets/git-credentials:/run/secrets/sourcescout/git-credentials:ro" \
   -e CODE_MCP_TOKEN=change-me \
-  rogo16/sourcescout-mcp:v0.0.1
+  rogo16/sourcescout-mcp:v0.0.3
 ```
 
 Token guidance:
 
 - GitHub: use a fine-grained personal access token scoped to the selected repositories with read-only Contents access.
-- GitLab: prefer a deploy token or project/group access token with `read_repository`.
+- GitLab: prefer a deploy token or project/group access token with `read_repository`; for a personal access token, use the GitLab username as the credential username and a token with `read_repository`.
 - Bitbucket Cloud: use an app password or API token with repository read access.
 - Gitea/Forgejo: use a token or service account with repository read access.
 
@@ -347,7 +365,8 @@ This is simple but less clean because the token can be stored in the cloned repo
 projects:
   - id: gitlab-token-url
     name: GitLab Token URL
-    repo_url: https://deploy-token-user:deploy-token@gitlab.example.com/org/backend.git
+    git:
+      url: https://deploy-token-user:deploy-token@gitlab.example.com/org/backend.git
     branch: main
     enabled: true
 ```

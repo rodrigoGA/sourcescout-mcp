@@ -5,6 +5,7 @@ import { ProjectRegistry } from "./projectRegistry.js";
 import { RepoSyncManager } from "./repoSyncManager.js";
 import { buildMcpServer } from "./mcpTools.js";
 import { startHttpServer } from "./httpServer.js";
+import { prepareProjectGitAuth } from "./gitAuth.js";
 
 async function main(): Promise<void> {
   process.env.PATH = `${path.resolve("node_modules/.bin")}${path.delimiter}${process.env.PATH ?? ""}`;
@@ -12,6 +13,7 @@ async function main(): Promise<void> {
   const config = await loadConfig();
   await mkdir(config.workspace.root, { recursive: true });
   await mkdir(config.workspace.state_path, { recursive: true });
+  await prepareProjectGitAuth(config);
 
   const registry = await ProjectRegistry.create(config);
   const syncManager = new RepoSyncManager(config, registry);

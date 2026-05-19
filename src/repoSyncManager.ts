@@ -5,6 +5,7 @@ import { SourceScoutError } from "./types.js";
 import { AsyncLock } from "./asyncLock.js";
 import { runCommand } from "./commandRunner.js";
 import { ProjectRegistry } from "./projectRegistry.js";
+import { gitAuthEnv } from "./gitAuth.js";
 
 export class RepoSyncManager {
   private readonly locks = new Map<string, AsyncLock>();
@@ -166,22 +167,28 @@ export class RepoSyncManager {
   }
 
   private async clone(project: RegisteredProject): Promise<void> {
-    if (!project.config.repo_url) {
-      throw new SourceScoutError("PROJECT_REPO_URL_MISSING", `repo_url missing for ${project.config.id}`);
+    if (!project.config.git?.url) {
+      throw new SourceScoutError("PROJECT_REPO_URL_MISSING", `git.url missing for ${project.config.id}`);
     }
     await mkdir(path.dirname(project.localPath), { recursive: true });
-    await this.mustRun("git", ["clone", "--branch", project.config.branch, project.config.repo_url, project.localPath]);
+    await this.mustRun(
+      "git",
+      ["clone", "--branch", project.config.branch, project.config.git.url, project.localPath],
+      undefined,
+      project,
+    );
   }
 
   private async pullExisting(project: RegisteredProject): Promise<void> {
-    await this.mustRun("git", ["fetch", "--all", "--prune", "--tags"], project.localPath);
-    await this.mustRun("git", ["checkout", project.config.branch], project.localPath);
-    await this.mustRun("git", ["pull", "--ff-only"], project.localPath);
+    await this.mustRun("git", ["fetch", "--all", "--prune", "--tags"], project.localPath, project);
+    await this.mustRun("git", ["checkout", project.config.branch], project.localPath, project);
+    await this.mustRun("git", ["pull", "--ff-only"], project.localPath, project);
   }
 
   private async tryPull(project: RegisteredProject): Promise<boolean> {
     const result = await runCommand("git", ["fetch", "--all", "--prune", "--tags"], {
       cwd: project.localPath,
+      env: gitAuthEnv(project.config),
       timeoutMs: this.config.workspace.sync_timeout_seconds * 1000,
       maxOutputBytes: this.config.limits.max_tool_output_bytes,
     });
@@ -190,6 +197,7 @@ export class RepoSyncManager {
     }
     const checkout = await runCommand("git", ["checkout", project.config.branch], {
       cwd: project.localPath,
+      env: gitAuthEnv(project.config),
       timeoutMs: this.config.workspace.sync_timeout_seconds * 1000,
       maxOutputBytes: this.config.limits.max_tool_output_bytes,
     });
@@ -198,15 +206,17 @@ export class RepoSyncManager {
     }
     const pull = await runCommand("git", ["pull", "--ff-only"], {
       cwd: project.localPath,
+      env: gitAuthEnv(project.config),
       timeoutMs: this.config.workspace.sync_timeout_seconds * 1000,
       maxOutputBytes: this.config.limits.max_tool_output_bytes,
     });
     return pull.exitCode === 0 && !pull.timedOut;
   }
 
-  private async mustRun(command: string, args: string[], cwd?: string): Promise<void> {
+  private async mustRun(command: string, args: string[], cwd?: string, project?: RegisteredProject): Promise<void> {
     const result = await runCommand(command, args, {
       cwd,
+      env: project ? gitAuthEnv(project.config) : undefined,
       timeoutMs: this.config.workspace.sync_timeout_seconds * 1000,
       maxOutputBytes: this.config.limits.max_tool_output_bytes,
     });

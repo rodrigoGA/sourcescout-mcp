@@ -22,6 +22,8 @@ readiness:
 
 probe:
   binary: probe
+  default_search_max_results: 20
+  default_search_max_tokens: 8000
 
 git:
   timeout_seconds: 30

@@ -31,14 +31,16 @@ export class ProbeAdapter {
       "--format",
       input.format ?? "json",
     ];
-    const maxResults = input.maxResults ?? input.max_results;
-    if (maxResults !== undefined) {
-      args.push("--max-results", String(clampInt(maxResults, maxResults, 1, this.config.limits.max_search_results)));
-    }
-    const maxTokens = input.maxTokens ?? input.max_tokens;
-    if (maxTokens !== undefined) {
-      args.push("--max-tokens", String(clampInt(maxTokens, maxTokens, 100, this.config.limits.max_tool_output_bytes)));
-    }
+    const maxResults = input.maxResults ?? input.max_results ?? this.config.probe.default_search_max_results;
+    args.push(
+      "--max-results",
+      String(clampInt(maxResults, this.config.probe.default_search_max_results, 1, this.config.limits.max_search_results)),
+    );
+    const maxTokens = input.maxTokens ?? input.max_tokens ?? this.config.probe.default_search_max_tokens;
+    args.push(
+      "--max-tokens",
+      String(clampInt(maxTokens, this.config.probe.default_search_max_tokens, 100, this.config.limits.max_tool_output_bytes)),
+    );
     if (input.language) {
       args.push("--language", input.language);
     }

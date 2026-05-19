@@ -1,6 +1,17 @@
 import type { AppConfig } from "../src/types.js";
 
-export function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
+type TestConfigOverrides = Partial<Omit<AppConfig, "workspace" | "auth" | "readiness" | "probe" | "git" | "limits" | "tools" | "lsp">> & {
+  workspace?: Partial<AppConfig["workspace"]>;
+  auth?: Partial<AppConfig["auth"]>;
+  readiness?: Partial<AppConfig["readiness"]>;
+  probe?: Partial<AppConfig["probe"]>;
+  git?: Partial<AppConfig["git"]>;
+  limits?: Partial<AppConfig["limits"]>;
+  tools?: Partial<AppConfig["tools"]>;
+  lsp?: Partial<AppConfig["lsp"]>;
+};
+
+export function testConfig(overrides: TestConfigOverrides = {}): AppConfig {
   const config: AppConfig = {
     server: { name: "SourceScout MCP", port: 8080 },
     workspace: {
@@ -16,6 +27,8 @@ export function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     readiness: { require_all_projects_ready: false, require_at_least_one_project_ready: true },
     probe: {
       binary: "probe",
+      default_search_max_results: 20,
+      default_search_max_tokens: 8000,
     },
     git: {
       timeout_seconds: 30,

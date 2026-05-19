@@ -21,6 +21,8 @@ const defaultReadiness = {
 };
 const defaultProbe = {
   binary: "probe",
+  default_search_max_results: 20,
+  default_search_max_tokens: 8000,
 };
 const defaultGit = {
   timeout_seconds: 30,
@@ -36,6 +38,19 @@ const defaultLimits = {
 };
 const defaultTools = { enabled: [...TOOL_NAMES] };
 const defaultLsp = { enabled: false };
+
+const gitAuthSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("ssh"),
+    path: z.string().min(1).optional(),
+  }),
+  z.object({
+    type: z.literal("httpsToken"),
+    path: z.string().min(1).optional(),
+    username_key: z.string().min(1).optional(),
+    password_key: z.string().min(1).optional(),
+  }),
+]);
 
 const configSchema = z.object({
   server: z
@@ -71,6 +86,8 @@ const configSchema = z.object({
   probe: z
     .object({
       binary: z.string().min(1).default("probe"),
+      default_search_max_results: z.number().int().positive().default(20),
+      default_search_max_tokens: z.number().int().positive().default(8000),
     })
     .default(defaultProbe),
   git: z
@@ -106,13 +123,18 @@ const configSchema = z.object({
           id: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/),
           name: z.string().min(1),
           description: z.string().optional(),
-          repo_url: z.string().min(1).optional(),
+          git: z
+            .object({
+              url: z.string().min(1),
+              auth: gitAuthSchema.optional(),
+            })
+            .optional(),
           branch: z.string().min(1).default("main"),
           local_path: z.string().min(1).optional(),
           enabled: z.boolean().default(true),
         })
-        .refine((project) => Boolean(project.repo_url || project.local_path), {
-          message: "project requires either repo_url or local_path",
+        .refine((project) => Boolean(project.git?.url || project.local_path), {
+          message: "project requires either git.url or local_path",
         }),
     )
     .default([]),

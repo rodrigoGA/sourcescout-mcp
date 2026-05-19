@@ -25,10 +25,15 @@ export interface ProjectConfig {
   id: string;
   name: string;
   description?: string;
-  repo_url?: string;
+  git?: ProjectGitConfig;
   branch: string;
   local_path?: string;
   enabled: boolean;
+}
+
+export interface ProjectGitConfig {
+  url: string;
+  auth?: GitAuthConfig;
 }
 
 export interface ServerConfig {
@@ -59,12 +64,26 @@ export interface ReadinessConfig {
 
 export interface ProbeConfig {
   binary: string;
+  default_search_max_results: number;
+  default_search_max_tokens: number;
 }
 
 export interface GitConfig {
   timeout_seconds: number;
   default_log_limit: number;
 }
+
+export type GitAuthConfig =
+  | {
+      type: "ssh";
+      path?: string;
+    }
+  | {
+      type: "httpsToken";
+      path?: string;
+      username_key?: string;
+      password_key?: string;
+    };
 
 export interface LimitsConfig {
   max_file_lines: number;

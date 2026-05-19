@@ -1,16 +1,15 @@
 # Kubernetes Deployment
 
-This is the baseline production shape for SourceScout MCP. It keeps the manifest small:
+This is the baseline production shape for SourceScout MCP. It keeps Git authentication in a standard Kubernetes Secret mounted at a fixed path.
 
-- Docker image: `rogo16/sourcescout-mcp:v0.0.1`
+- Docker image: `rogo16/sourcescout-mcp:v0.0.3`
 - a `ConfigMap` for `projects.yml`
-- a bearer token `Secret`
-- an optional SSH deploy key `Secret`
-- an optional `.netrc` Secret for HTTPS Git tokens
+- a bearer token `Secret` for MCP HTTP auth
+- a Kubernetes Secret for Git authentication
 - a PVC for local clones and state
 - unauthenticated `/live` and `/ready` probes
 
-The image handles SSH host keys by default with OpenSSH `StrictHostKeyChecking=accept-new` and stores `known_hosts` in `/workspace/state/known_hosts`. This avoids asking every deployment to maintain a `known_hosts` Secret. For stricter environments, override `GIT_SSH_COMMAND` and mount a pinned `known_hosts` file.
+The image handles SSH host keys by default with OpenSSH `StrictHostKeyChecking=accept-new` and stores `known_hosts` in `/workspace/state/known_hosts`.
 
 ```yaml
 apiVersion: v1
@@ -24,18 +23,23 @@ stringData:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: sourcescout-ssh
-type: Opaque
+  name: sourcescout-git-auth
+type: kubernetes.io/basic-auth
 stringData:
-  id_ed25519: |
+  username: YOUR_GIT_USERNAME
+  password: YOUR_READ_ONLY_TOKEN
+---
+# Alternative for SSH repo URLs:
+apiVersion: v1
+kind: Secret
+metadata:
+  name: sourcescout-git-ssh
+type: kubernetes.io/ssh-auth
+stringData:
+  ssh-privatekey: |
     -----BEGIN OPENSSH PRIVATE KEY-----
     replace-me
     -----END OPENSSH PRIVATE KEY-----
-  # Optional for HTTPS token auth instead of SSH:
-  # netrc: |
-  #   machine github.com
-  #     login YOUR_USERNAME
-  #     password YOUR_READ_ONLY_TOKEN
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -61,10 +65,21 @@ data:
     readiness:
       require_all_projects_ready: false
       require_at_least_one_project_ready: true
+    probe:
+      binary: probe
+      default_search_max_results: 20
+      default_search_max_tokens: 8000
+    git:
+      timeout_seconds: 30
+      default_log_limit: 30
     projects:
       - id: backend
         name: Backend API
-        repo_url: git@github.com:example/backend.git
+        git:
+          url: https://github.com/example/backend.git
+          auth:
+            type: httpsToken
+            path: /run/secrets/sourcescout/git-auth/github
         branch: main
         enabled: true
 ---
@@ -94,7 +109,7 @@ spec:
     spec:
       containers:
         - name: sourcescout-mcp
-          image: rogo16/sourcescout-mcp:v0.0.1
+          image: rogo16/sourcescout-mcp:v0.0.3
           ports:
             - containerPort: 8080
           env:
@@ -105,10 +120,6 @@ spec:
                 secretKeyRef:
                   name: sourcescout-auth
                   key: CODE_MCP_TOKEN
-            - name: SOURCESCOUT_SSH_KEY_PATH
-              value: /run/secrets/sourcescout/id_ed25519
-            - name: SOURCESCOUT_NETRC_PATH
-              value: /run/secrets/sourcescout/netrc
           readinessProbe:
             httpGet:
               path: /ready
@@ -127,8 +138,8 @@ spec:
               readOnly: true
             - name: workspace
               mountPath: /workspace
-            - name: ssh-key
-              mountPath: /run/secrets/sourcescout
+            - name: github-auth
+              mountPath: /run/secrets/sourcescout/git-auth/github
               readOnly: true
       volumes:
         - name: config
@@ -137,9 +148,9 @@ spec:
         - name: workspace
           persistentVolumeClaim:
             claimName: sourcescout-workspace
-        - name: ssh-key
+        - name: github-auth
           secret:
-            secretName: sourcescout-ssh
+            secretName: sourcescout-git-auth
             defaultMode: 0400
 ---
 apiVersion: v1
@@ -155,16 +166,12 @@ spec:
       targetPort: 8080
 ```
 
-## Strict Host-Key Pinning
+## Git Authentication
 
-The default is trust-on-first-use, stored persistently in `/workspace/state/known_hosts`. That is practical for internal tools and avoids requiring a host-key secret.
+For HTTPS Git URLs, set `projects[].git.auth.type: httpsToken` and mount a Kubernetes `kubernetes.io/basic-auth` Secret at the matching `projects[].git.auth.path`. The Secret must contain `username` and `password` keys. The entrypoint copies mounted Git auth Secrets into `/home/node/.sourcescout-git-auth` with `0600` permissions, and SourceScout configures Git per project before cloning.
 
-If your security policy requires pinned host keys, mount a curated `known_hosts` file and override:
+For GitLab personal access tokens, use the GitLab username as the credential username and ensure the token has `read_repository`. For the `rgonzalez` user, the Secret should contain `username: rgonzalez` and `password: glpat-...`.
 
-```yaml
-env:
-  - name: GIT_SSH_COMMAND
-    value: ssh -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/etc/sourcescout/known_hosts
-```
+For SSH Git URLs, use `projects[].git.auth.type: ssh` and mount a Kubernetes `kubernetes.io/ssh-auth` Secret at the matching path. The Secret must contain the `ssh-privatekey` key.
 
-For HTTPS Git URLs, skip `id_ed25519` and provide a `netrc` key in the same `sourcescout-ssh` Secret, or use your platform's preferred credential strategy such as a Git credential helper or a token-injected repo URL.
+For stricter SSH host-key pinning, override `GIT_SSH_COMMAND` and mount a curated `known_hosts` file.
