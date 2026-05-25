@@ -10,6 +10,7 @@ COPY . .
 RUN corepack enable && pnpm build
 
 FROM node:22-slim AS runtime
+LABEL io.modelcontextprotocol.server.name="io.github.rodrigoGA/sourcescout-mcp"
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates git gosu openssh-client ripgrep tini \
   && rm -rf /var/lib/apt/lists/*

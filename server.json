@@ -1,0 +1,69 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.rodrigoGA/sourcescout-mcp",
+  "title": "SourceScout MCP",
+  "description": "Read-only multi-repository code search, file inspection, Probe, and Git history over HTTP.",
+  "version": "0.0.4",
+  "websiteUrl": "https://github.com/rodrigoGA/sourcescout-mcp",
+  "repository": {
+    "url": "https://github.com/rodrigoGA/sourcescout-mcp",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "oci",
+      "identifier": "docker.io/rogo16/sourcescout-mcp:v0.0.4",
+      "runtimeHint": "docker",
+      "runtimeArguments": [
+        {
+          "type": "named",
+          "name": "--rm"
+        },
+        {
+          "type": "named",
+          "name": "--publish",
+          "description": "Expose the local SourceScout HTTP endpoint.",
+          "value": "{host_port}:8080",
+          "variables": {
+            "host_port": {
+              "description": "Host port for the SourceScout MCP HTTP endpoint.",
+              "default": "8080"
+            }
+          }
+        },
+        {
+          "type": "named",
+          "name": "--mount",
+          "description": "Mount the SourceScout projects configuration file.",
+          "value": "type=bind,src={config_path},dst=/config/projects.yml,readonly",
+          "variables": {
+            "config_path": {
+              "description": "Path to a SourceScout projects.yml file.",
+              "format": "filepath",
+              "isRequired": true,
+              "placeholder": "./config/projects.yml"
+            }
+          }
+        },
+        {
+          "type": "named",
+          "name": "--mount",
+          "description": "Mount the persistent SourceScout workspace directory.",
+          "value": "type=bind,src={workspace_path},dst=/workspace",
+          "variables": {
+            "workspace_path": {
+              "description": "Directory used for cloned repositories and SourceScout state.",
+              "format": "filepath",
+              "isRequired": true,
+              "placeholder": "./workspace"
+            }
+          }
+        }
+      ],
+      "transport": {
+        "type": "streamable-http",
+        "url": "http://localhost:8080/mcp"
+      }
+    }
+  ]
+}

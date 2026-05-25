@@ -1,4 +1,4 @@
-import { mkdtemp } from "node:fs/promises";
+import { chmod, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { McpServer } from "@modelcontextprotocol/server";
@@ -68,6 +68,73 @@ describe("HTTP MCP server", () => {
 
       expect(toolText(slow)).toBe("slow");
       expect(toolText(fast)).toBe("fast");
+    } finally {
+      await httpServer.close();
+    }
+  });
+
+  it("returns raw Probe MCP-compatible search text", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "sourcescout-http-"));
+    const fakeProbe = path.join(root, "probe");
+    await writeFile(
+      fakeProbe,
+      `#!/bin/sh
+cat <<'EOF'
+<matches>
+<file path="src/index.ts">
+1 export const value = 1;
+</file>
+</matches>
+EOF
+`,
+      "utf8",
+    );
+    await chmod(fakeProbe, 0o755);
+
+    const baseConfig = testConfig();
+    const config = testConfig({
+      server: { name: "SourceScout MCP", port: 0 },
+      workspace: {
+        ...baseConfig.workspace,
+        root: path.join(root, "repos"),
+        state_path: path.join(root, "state"),
+      },
+      probe: { binary: fakeProbe },
+      projects: [
+        {
+          id: "app",
+          name: "App",
+          local_path: root,
+          branch: "main",
+          enabled: true,
+        },
+      ],
+    });
+    const registry = await ProjectRegistry.create(config);
+    await registry.updateState("app", { status: "ready" });
+    const syncManager = new RepoSyncManager(config, registry);
+    const httpServer = await startHttpServer({
+      config,
+      registry,
+      syncManager,
+      createMcpServer: () => buildMcpServer(config, registry, syncManager),
+    });
+
+    try {
+      const response = await postMcp(`http://127.0.0.1:${httpServer.port}/mcp`, {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "search_code", arguments: { project_id: "app", query: "value" } },
+      });
+
+      expect(toolText(response)).toBe(`<matches>
+<file path="src/index.ts">
+1 export const value = 1;
+</file>
+</matches>
+`);
+      expect(response.result?.structuredContent).toBeUndefined();
     } finally {
       await httpServer.close();
     }

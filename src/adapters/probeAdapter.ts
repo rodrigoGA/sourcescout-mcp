@@ -18,6 +18,7 @@ export class ProbeAdapter {
     allowTests?: boolean;
     strictElasticSyntax?: boolean;
     session?: string;
+    nextPage?: boolean;
     allow_tests?: boolean;
     exact?: boolean;
     reranker?: "bm25" | "tfidf" | "hybrid" | "hybrid2";
@@ -29,7 +30,7 @@ export class ProbeAdapter {
       input.query,
       targetPath,
       "--format",
-      input.format ?? "json",
+      input.format ?? "outline-xml",
     ];
     const maxResults = input.maxResults ?? input.max_results ?? this.config.probe.default_search_max_results;
     args.push(
@@ -53,18 +54,11 @@ export class ProbeAdapter {
     if (input.strictElasticSyntax) {
       args.push("--strict-elastic-syntax");
     }
-    if (input.session) {
-      args.push("--session", input.session);
-    }
+    args.push("--session", this.normalizeSession(input.session));
     if (input.reranker) {
       args.push("--reranker", input.reranker);
     }
-    return this.runProbe(project, args, {
-      project_id: project.config.id,
-      query: input.query,
-      path: targetPath,
-      session: input.session,
-    });
+    return this.runProbeRaw(project, args);
   }
 
   async queryCode(project: RegisteredProject, input: {
@@ -197,6 +191,28 @@ export class ProbeAdapter {
     return { ...envelope, raw_output: result.stdout, truncated: result.truncated };
   }
 
+  private async runProbeRaw(
+    project: RegisteredProject,
+    args: string[],
+    timeoutSeconds?: number,
+  ): Promise<string> {
+    const result = await runCommand(this.config.probe.binary, args, {
+      cwd: project.localPath,
+      timeoutMs: this.timeoutMs(timeoutSeconds),
+      maxOutputBytes: this.config.limits.max_tool_output_bytes,
+    });
+    if (result.exitCode !== 0 || result.timedOut) {
+      throw new SourceScoutError(
+        "PROBE_FAILED",
+        `probe ${args.join(" ")} failed: ${result.stderr || result.stdout}`,
+        500,
+        result,
+      );
+    }
+
+    return result.stdout;
+  }
+
   private normalizeProbeTarget(target: string): string {
     const separatorIndex = this.findTargetSeparator(target);
     const pathPart = separatorIndex === -1 ? target : target.slice(0, separatorIndex);
@@ -214,6 +230,13 @@ export class ProbeAdapter {
       return colon;
     }
     return Math.min(colon, hash);
+  }
+
+  private normalizeSession(session: string | undefined): string {
+    if (session !== undefined && session.trim() !== "") {
+      return session;
+    }
+    return "new";
   }
 
   private timeoutMs(timeoutSeconds?: number): number {

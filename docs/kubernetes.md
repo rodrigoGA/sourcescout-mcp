@@ -2,7 +2,7 @@
 
 This is the baseline production shape for SourceScout MCP. It keeps Git authentication in a standard Kubernetes Secret mounted at a fixed path.
 
-- Docker image: `rogo16/sourcescout-mcp:v0.0.3`
+- Docker image: `rogo16/sourcescout-mcp:v0.0.4`
 - a `ConfigMap` for `projects.yml`
 - a bearer token `Secret` for MCP HTTP auth
 - a Kubernetes Secret for Git authentication
@@ -109,7 +109,7 @@ spec:
     spec:
       containers:
         - name: sourcescout-mcp
-          image: rogo16/sourcescout-mcp:v0.0.3
+          image: rogo16/sourcescout-mcp:v0.0.4
           ports:
             - containerPort: 8080
           env:

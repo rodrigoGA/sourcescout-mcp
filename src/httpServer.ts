@@ -5,6 +5,7 @@ import type { AppConfig } from "./types.js";
 import { ProjectRegistry } from "./projectRegistry.js";
 import { RepoSyncManager } from "./repoSyncManager.js";
 import { runCommand } from "./commandRunner.js";
+import { VERSION } from "./version.js";
 
 export interface HttpServerContext {
   config: AppConfig;
@@ -137,7 +138,7 @@ async function getHealth(context: HttpServerContext): Promise<Record<string, unk
 
   return {
     status: "ok",
-    version: "0.0.1",
+    version: VERSION,
     probe: {
       available: probe.exitCode === 0,
       version: probe.stdout.trim() || probe.stderr.trim(),

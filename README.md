@@ -96,15 +96,15 @@ Use `git.url` for SourceScout-managed clones. Use `local_path` for mounted repos
 
 ### Probe Results and Pagination
 
-Probe does not use offset/page pagination. For `search_code`, SourceScout exposes Probe's `session` parameter so repeated searches can avoid returning results already shown in that session. For other Probe tools, use narrower follow-up calls or extract exact blocks from previous results.
+Probe does not use offset/page pagination. For `search_code`, SourceScout exposes Probe's `session` and `nextPage` parameters like Probe MCP: omit `session` for a fresh search, then pass the `Session ID` printed by Probe on follow-up searches to avoid results already shown in that session. `nextPage` is a client hint; Probe's cache behavior is driven by the session ID. For other Probe tools, use narrower follow-up calls or extract exact blocks from previous results.
 
-For deeper exploration, agents should issue narrower or follow-up queries, use `extract_code` for exact blocks, or use `grep`/`read_file` for deterministic expansion.
+For deeper exploration, agents should issue narrower or follow-up queries, use `extract_code` for exact blocks, or use `grep`/`read_file` for deterministic expansion. `search_code` defaults to Probe MCP-compatible `outline-xml` output and returns Probe's text directly instead of wrapping it in a SourceScout envelope.
 
 ### Limits
 
 The config separates command settings from hard caps:
 
-- `probe`: Probe binary setting and SourceScout's Probe search defaults. `search_code` defaults match Probe MCP: `default_search_max_results: 20` and `default_search_max_tokens: 8000`.
+- `probe`: Probe binary setting and SourceScout's Probe search defaults. `search_code` defaults to Probe MCP-compatible `outline-xml` output, `allowTests: false`, `session: "new"`, `default_search_max_results: 20`, and `default_search_max_tokens: 8000`; it also accepts Probe-style `nextPage` as a session pagination hint.
 - `git`: Git-specific defaults, currently `timeout_seconds` and `default_log_limit`.
 - `limits`: global safety caps across tools.
 
@@ -128,7 +128,7 @@ limits:
 Published image:
 
 ```bash
-docker pull rogo16/sourcescout-mcp:v0.0.3
+docker pull rogo16/sourcescout-mcp:v0.0.4
 ```
 
 ```bash
@@ -136,10 +136,31 @@ docker run --rm -p 8080:8080 \
   -v "$PWD/config/projects.example.yml:/config/projects.yml:ro" \
   -v "$PWD/workspace:/workspace" \
   -e PROJECTS_CONFIG_PATH=/config/projects.yml \
-  rogo16/sourcescout-mcp:v0.0.3
+  rogo16/sourcescout-mcp:v0.0.4
 ```
 
 The image includes Node 22, Probe, Git, OpenSSH client, CA certificates, ripgrep, and tini.
+
+## MCP Registry
+
+SourceScout can be published to the Official MCP Registry as an OCI package. The registry metadata lives in [server.json](server.json), and the Docker image includes the ownership verification label required by the registry.
+
+Publish a release image first:
+
+```bash
+docker build -t rogo16/sourcescout-mcp:v0.0.4 .
+docker push rogo16/sourcescout-mcp:v0.0.4
+```
+
+Then publish the registry metadata:
+
+```bash
+mcp-publisher login github
+mcp-publisher publish
+curl "https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.rodrigoGA/sourcescout-mcp"
+```
+
+See [docs/publishing.md](docs/publishing.md) for the release checklist.
 
 ## Kubernetes
 
@@ -169,7 +190,7 @@ docker run --rm -p 8080:8080 \
   -v "$PWD/workspace:/workspace" \
   -e PROJECTS_CONFIG_PATH=/config/projects.yml \
   -e CODE_MCP_TOKEN=change-me \
-  rogo16/sourcescout-mcp:v0.0.3
+  rogo16/sourcescout-mcp:v0.0.4
 ```
 
 Add it to Claude Code:
@@ -292,7 +313,7 @@ docker run --rm -p 8080:8080 \
   -v "$PWD/workspace:/workspace" \
   -v "$PWD/secrets/gitlab-ssh:/run/secrets/sourcescout/git-auth/gitlab:ro" \
   -e CODE_MCP_TOKEN=change-me \
-  rogo16/sourcescout-mcp:v0.0.3
+  rogo16/sourcescout-mcp:v0.0.4
 ```
 
 The image copies mounted Git auth Secret files into `/home/node/.sourcescout-git-auth`, fixes permissions, and uses `StrictHostKeyChecking=accept-new` with project-specific `known_hosts` files.
@@ -347,7 +368,7 @@ docker run --rm -p 8080:8080 \
   -v "$PWD/workspace:/workspace" \
   -v "$PWD/secrets/git-credentials:/run/secrets/sourcescout/git-credentials:ro" \
   -e CODE_MCP_TOKEN=change-me \
-  rogo16/sourcescout-mcp:v0.0.3
+  rogo16/sourcescout-mcp:v0.0.4
 ```
 
 Token guidance:

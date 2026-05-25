@@ -8,6 +8,7 @@ import { FileAdapter } from "./adapters/fileAdapter.js";
 import { ProbeAdapter } from "./adapters/probeAdapter.js";
 import { GrepAdapter } from "./adapters/grepAdapter.js";
 import { GitAdapter } from "./adapters/gitAdapter.js";
+import { VERSION } from "./version.js";
 
 const gitOperationSchema = z.enum([
   "log",
@@ -45,7 +46,7 @@ export function buildMcpServer(
 ): McpServer {
   const server = new McpServer({
     name: config.server.name,
-    version: "0.0.1",
+    version: VERSION,
   });
 
   const fileAdapter = new FileAdapter(config);
@@ -153,11 +154,16 @@ export function buildMcpServer(
           allowTests: z
             .boolean()
             .optional()
-            .describe("Allow test files and test code blocks in search results."),
+            .default(false)
+            .describe("Allow test files and test code blocks in search results. Defaults to false."),
           session: z
             .string()
             .optional()
             .describe("Session ID for result caching and pagination. Pass the session ID from a previous search to get additional results. Results already shown in a session are automatically excluded. Omit for a fresh search."),
+          nextPage: z
+            .boolean()
+            .optional()
+            .describe("Semantic pagination hint matching Probe MCP. SourceScout passes the session to Probe; Probe uses the session cache to skip results already shown."),
           reranker: z
             .enum(["bm25", "tfidf", "hybrid", "hybrid2"])
             .optional()
@@ -165,8 +171,8 @@ export function buildMcpServer(
           format: z
             .enum(["markdown", "plain", "json", "xml", "outline", "outline-xml"])
             .optional()
-            .default("json")
-            .describe("Output format for search results."),
+            .default("outline-xml")
+            .describe("Output format for search results. Defaults to outline-xml, matching Probe MCP."),
         }),
         annotations: { readOnlyHint: true, idempotentHint: true },
       },
@@ -431,6 +437,11 @@ export function buildMcpServer(
 async function toolResponse(fn: () => unknown | Promise<unknown>): Promise<any> {
   try {
     const data = await fn();
+    if (typeof data === "string") {
+      return {
+        content: [{ type: "text" as const, text: data }],
+      };
+    }
     return {
       content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
       structuredContent: toStructuredContent(data),
