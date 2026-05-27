@@ -4,6 +4,10 @@ SourceScout MCP is a small MCP server for inspecting multiple Git projects over 
 
 It keeps configured repositories available on disk, refreshes managed clones on demand, and exposes a deliberately small tool surface for agents that need to investigate code without a separate indexing service.
 
+Modern coding agents are already effective shell users. SourceScout gives them a read-only project shell over MCP, so they can search with regular expressions, inspect exact files, follow Git history, and measure code layout without building or maintaining an index.
+
+For many code-inspection workflows, this simple approach is fast and token-efficient: the agent can ask for the next narrow slice of context with tools like `rg`, `git grep`, `find`, `sed`, and `cloc`, instead of receiving large result sets. It is also easy to operate: keep repositories on disk, let the service scale down when idle, and start it when an agent needs source context.
+
 ## MCP Tools
 
 SourceScout exposes two tools:
@@ -22,19 +26,7 @@ SourceScout exposes two tools:
 
 Before running the command, SourceScout calls `ensureProjectFresh(project_id)`. If the project has a usable checkout and `workspace.pull_ttl_seconds` has expired, SourceScout starts a refresh in the background and serves the existing checkout. If the checkout is missing or unusable, it waits for sync to complete.
 
-Useful inspection commands include `ls`, `tree`, `find`, `rg --files`, `rg "pattern"`, `grep -R`, `git grep`, `git status`, `git diff`, `git log`, `git blame`, `cat`, `sed -n 'X,Yp'`, `head`, and `tail`.
-
-Shell output is combined stdout/stderr text. Non-zero shell exit codes are returned as normal tool output, not as MCP errors. SourceScout appends a footer:
-
-```text
-[SourceScout shell status]
-exit_code=0
-duration_ms=12
-timed_out=false
-truncated=false
-```
-
-Internal runner failures, unknown projects, disabled projects, and unavailable projects are returned as MCP tool errors.
+Useful inspection commands include `ls`, `tree`, `find`, `rg --files`, `rg "pattern"`, `grep -R`, `git grep`, `git status`, `git diff`, `git log`, `git blame`, `cat`, `sed -n 'X,Yp'`, `head`, `tail`, and `cloc`.
 
 ## Configuration
 
@@ -113,7 +105,9 @@ The image configures sudo only for `sourcescout` to execute `/bin/sh` as `source
 
 Mounted `local_path` repositories are not chowned or chmodded by SourceScout. They must already be readable by the configured `shell.readonly_user`.
 
-The shell user may still write anywhere the operating system permits, such as `/tmp`. The safety boundary is the read-only project checkout, output truncation, timeout, and MCP authentication.
+SourceScout is intended for source inspection by authenticated agents, not as a complete sandbox for arbitrary untrusted commands. The read-only user is meant to prevent writes to managed project checkouts, but it does not by itself block network access, process creation, reads from other paths allowed by the operating system, or writes to locations such as `/tmp`. Treat MCP access as privileged, use read-only Git credentials, keep secrets out of working trees, and rely on normal container or cluster controls for stronger isolation.
+
+The runtime still applies practical guardrails for agent use: commands run as the configured read-only user, output is bounded by `limits.max_tool_output_bytes`, and execution time is bounded by `limits.command_timeout_seconds`.
 
 ## Limits
 
@@ -123,7 +117,7 @@ limits:
   command_timeout_seconds: 300
 ```
 
-`max_tool_output_bytes` caps combined stdout/stderr before the status footer. If the cap is exceeded, SourceScout truncates output and marks `truncated=true`. `command_timeout_seconds` is a global timeout for the shell command; on timeout SourceScout sends `SIGTERM` to the process group and then `SIGKILL` if needed.
+`max_tool_output_bytes` caps combined stdout/stderr returned by the shell. If the cap is exceeded, SourceScout truncates the output and reports it as truncated. `command_timeout_seconds` is a global timeout for the shell command; on timeout SourceScout sends `SIGTERM` to the process group and then `SIGKILL` if needed.
 
 ## Docker
 
