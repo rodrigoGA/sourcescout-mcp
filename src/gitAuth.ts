@@ -88,7 +88,7 @@ function defaultAuthPath(auth: GitAuthConfig): string {
 function runtimeAuthPath(auth: GitAuthConfig): string {
   const secretPath = auth.path ?? defaultAuthPath(auth);
   const mountedRoot = process.env.SOURCESCOUT_GIT_AUTH_ROOT ?? "/run/secrets/sourcescout/git-auth";
-  const copiedRoot = process.env.SOURCESCOUT_GIT_AUTH_COPIED_ROOT ?? "/home/node/.sourcescout-git-auth";
+  const copiedRoot = process.env.SOURCESCOUT_GIT_AUTH_COPIED_ROOT ?? "/home/sourcescout/.sourcescout-git-auth";
 
   if (secretPath === mountedRoot || secretPath.startsWith(`${mountedRoot}/`)) {
     return path.join(copiedRoot, path.relative(mountedRoot, secretPath));

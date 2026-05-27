@@ -1,14 +1,6 @@
 export const TOOL_NAMES = [
   "list_projects",
-  "project_overview",
-  "search_code",
-  "query_code",
-  "extract_code",
-  "list_symbols",
-  "grep",
-  "read_file",
-  "list_files",
-  "git_query",
+  "code_inspect_shell",
 ] as const;
 
 export type ToolName = (typeof TOOL_NAMES)[number];
@@ -62,15 +54,13 @@ export interface ReadinessConfig {
   require_at_least_one_project_ready: boolean;
 }
 
-export interface ProbeConfig {
-  binary: string;
-  default_search_max_results: number;
-  default_search_max_tokens: number;
-}
-
 export interface GitConfig {
   timeout_seconds: number;
   default_log_limit: number;
+}
+
+export interface ShellConfig {
+  readonly_user?: string;
 }
 
 export type GitAuthConfig =
@@ -86,11 +76,7 @@ export type GitAuthConfig =
     };
 
 export interface LimitsConfig {
-  max_file_lines: number;
-  max_file_bytes: number;
   max_tool_output_bytes: number;
-  max_search_results: number;
-  max_git_log_limit: number;
   command_timeout_seconds: number;
 }
 
@@ -107,8 +93,8 @@ export interface AppConfig {
   workspace: WorkspaceConfig;
   auth: AuthConfig;
   readiness: ReadinessConfig;
-  probe: ProbeConfig;
   git: GitConfig;
+  shell: ShellConfig;
   limits: LimitsConfig;
   tools: ToolsConfig;
   lsp: LspConfig;
@@ -139,6 +125,18 @@ export interface CommandResult {
   exitCode: number | null;
   stdout: string;
   stderr: string;
+  timedOut: boolean;
+  truncated: boolean;
+  durationMs: number;
+}
+
+export interface ShellCommandResult {
+  command: string;
+  args: string[];
+  cwd: string;
+  exitCode: number | null;
+  output: string;
+  sanitized: boolean;
   timedOut: boolean;
   truncated: boolean;
   durationMs: number;

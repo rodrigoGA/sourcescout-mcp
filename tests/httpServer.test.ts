@@ -1,4 +1,4 @@
-import { chmod, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { McpServer } from "@modelcontextprotocol/server";
@@ -73,23 +73,8 @@ describe("HTTP MCP server", () => {
     }
   });
 
-  it("returns raw Probe MCP-compatible search text", async () => {
+  it("returns code_inspect_shell output as text", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "sourcescout-http-"));
-    const fakeProbe = path.join(root, "probe");
-    await writeFile(
-      fakeProbe,
-      `#!/bin/sh
-cat <<'EOF'
-<matches>
-<file path="src/index.ts">
-1 export const value = 1;
-</file>
-</matches>
-EOF
-`,
-      "utf8",
-    );
-    await chmod(fakeProbe, 0o755);
 
     const baseConfig = testConfig();
     const config = testConfig({
@@ -99,7 +84,6 @@ EOF
         root: path.join(root, "repos"),
         state_path: path.join(root, "state"),
       },
-      probe: { binary: fakeProbe },
       projects: [
         {
           id: "app",
@@ -125,15 +109,11 @@ EOF
         jsonrpc: "2.0",
         id: 1,
         method: "tools/call",
-        params: { name: "search_code", arguments: { project_id: "app", query: "value" } },
+        params: { name: "code_inspect_shell", arguments: { project_id: "app", command: "printf 'hello\\n'" } },
       });
 
-      expect(toolText(response)).toBe(`<matches>
-<file path="src/index.ts">
-1 export const value = 1;
-</file>
-</matches>
-`);
+      expect(toolText(response)).toContain("hello\n");
+      expect(toolText(response)).toContain("[SourceScout shell status]\nexit_code=0\n");
       expect(response.result?.structuredContent).toBeUndefined();
     } finally {
       await httpServer.close();

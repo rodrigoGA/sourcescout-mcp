@@ -19,21 +19,13 @@ const defaultReadiness = {
   require_all_projects_ready: false,
   require_at_least_one_project_ready: true,
 };
-const defaultProbe = {
-  binary: "probe",
-  default_search_max_results: 20,
-  default_search_max_tokens: 8000,
-};
 const defaultGit = {
   timeout_seconds: 30,
   default_log_limit: 30,
 };
+const defaultShell = {};
 const defaultLimits = {
-  max_file_lines: 60000,
-  max_file_bytes: 5000000,
   max_tool_output_bytes: 8000000,
-  max_search_results: 100,
-  max_git_log_limit: 200,
   command_timeout_seconds: 300,
 };
 const defaultTools = { enabled: [...TOOL_NAMES] };
@@ -83,26 +75,20 @@ const configSchema = z.object({
       require_at_least_one_project_ready: z.boolean().default(true),
     })
     .default(defaultReadiness),
-  probe: z
-    .object({
-      binary: z.string().min(1).default("probe"),
-      default_search_max_results: z.number().int().positive().default(20),
-      default_search_max_tokens: z.number().int().positive().default(8000),
-    })
-    .default(defaultProbe),
   git: z
     .object({
       timeout_seconds: z.number().int().positive().default(30),
       default_log_limit: z.number().int().positive().default(30),
     })
     .default(defaultGit),
+  shell: z
+    .object({
+      readonly_user: z.string().min(1).optional(),
+    })
+    .default(defaultShell),
   limits: z
     .object({
-      max_file_lines: z.number().int().positive().default(60000),
-      max_file_bytes: z.number().int().positive().default(5000000),
       max_tool_output_bytes: z.number().int().positive().default(8000000),
-      max_search_results: z.number().int().positive().default(100),
-      max_git_log_limit: z.number().int().positive().default(200),
       command_timeout_seconds: z.number().int().positive().default(300),
     })
     .default(defaultLimits),
@@ -154,8 +140,8 @@ export async function loadConfig(path = process.env.PROJECTS_CONFIG_PATH ?? "/co
   if (process.env.WORKSPACE_STATE_PATH) {
     config.workspace.state_path = process.env.WORKSPACE_STATE_PATH;
   }
-  if (process.env.PROBE_BINARY) {
-    config.probe.binary = process.env.PROBE_BINARY;
+  if (process.env.SOURCESCOUT_READONLY_USER) {
+    config.shell.readonly_user = process.env.SOURCESCOUT_READONLY_USER;
   }
 
   const uniqueProjectIds = new Set<string>();

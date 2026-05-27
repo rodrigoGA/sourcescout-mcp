@@ -20,35 +20,21 @@ readiness:
   require_all_projects_ready: false
   require_at_least_one_project_ready: true
 
-probe:
-  binary: probe
-  default_search_max_results: 20
-  default_search_max_tokens: 8000
-
 git:
   timeout_seconds: 30
   default_log_limit: 30
 
+shell:
+  readonly_user: sourcescout-readonly
+
 limits:
-  max_file_lines: 60000
-  max_file_bytes: 5000000
   max_tool_output_bytes: 8000000
-  max_search_results: 100
-  max_git_log_limit: 200
   command_timeout_seconds: 300
 
 tools:
   enabled:
     - list_projects
-    - project_overview
-    - search_code
-    - query_code
-    - extract_code
-    - list_symbols
-    - grep
-    - read_file
-    - list_files
-    - git_query
+    - code_inspect_shell
 
 lsp:
   enabled: false

@@ -1,15 +1,17 @@
 # Kubernetes Deployment
 
-This is the baseline production shape for SourceScout MCP. It keeps Git authentication in a standard Kubernetes Secret mounted at a fixed path.
+This is the baseline production shape for SourceScout MCP.
 
-- Docker image: `rogo16/sourcescout-mcp:v0.0.4`
+- Docker image: `rogo16/sourcescout-mcp:v0.0.10`
 - a `ConfigMap` for `projects.yml`
 - a bearer token `Secret` for MCP HTTP auth
 - a Kubernetes Secret for Git authentication
-- a PVC for local clones and state
+- a PVC for managed clones and state
 - unauthenticated `/live` and `/ready` probes
 
-The image handles SSH host keys by default with OpenSSH `StrictHostKeyChecking=accept-new` and stores `known_hosts` in `/workspace/state/known_hosts`.
+The image runs the application as `sourcescout` and runs `code_inspect_shell` commands through sudo as `sourcescout-readonly`. Managed clones are chmodded after clone/pull so that `sourcescout-readonly` can read and traverse them without write access.
+
+The runtime image installs common source-inspection utilities available to the read-only shell user, including `ls`, `cat`, `head`, `tail`, `sed`, `grep`, `find`, `rg`, `tree`, `cloc`, and `git`.
 
 ```yaml
 apiVersion: v1
@@ -65,13 +67,18 @@ data:
     readiness:
       require_all_projects_ready: false
       require_at_least_one_project_ready: true
-    probe:
-      binary: probe
-      default_search_max_results: 20
-      default_search_max_tokens: 8000
     git:
       timeout_seconds: 30
       default_log_limit: 30
+    shell:
+      readonly_user: sourcescout-readonly
+    limits:
+      max_tool_output_bytes: 8000000
+      command_timeout_seconds: 300
+    tools:
+      enabled:
+        - list_projects
+        - code_inspect_shell
     projects:
       - id: backend
         name: Backend API
@@ -109,7 +116,7 @@ spec:
     spec:
       containers:
         - name: sourcescout-mcp
-          image: rogo16/sourcescout-mcp:v0.0.4
+          image: rogo16/sourcescout-mcp:v0.0.10
           ports:
             - containerPort: 8080
           env:
@@ -168,10 +175,12 @@ spec:
 
 ## Git Authentication
 
-For HTTPS Git URLs, set `projects[].git.auth.type: httpsToken` and mount a Kubernetes `kubernetes.io/basic-auth` Secret at the matching `projects[].git.auth.path`. The Secret must contain `username` and `password` keys. The entrypoint copies mounted Git auth Secrets into `/home/node/.sourcescout-git-auth` with `0600` permissions, and SourceScout configures Git per project before cloning.
-
-For GitLab personal access tokens, use the GitLab username as the credential username and ensure the token has `read_repository`. For the `rgonzalez` user, the Secret should contain `username: rgonzalez` and `password: glpat-...`.
+For HTTPS Git URLs, set `projects[].git.auth.type: httpsToken` and mount a Kubernetes `kubernetes.io/basic-auth` Secret at the matching `projects[].git.auth.path`. The Secret must contain `username` and `password` keys. The entrypoint copies mounted Git auth Secrets into `/home/sourcescout/.sourcescout-git-auth` with `0600` permissions, and SourceScout configures Git per project before cloning.
 
 For SSH Git URLs, use `projects[].git.auth.type: ssh` and mount a Kubernetes `kubernetes.io/ssh-auth` Secret at the matching path. The Secret must contain the `ssh-privatekey` key.
 
-For stricter SSH host-key pinning, override `GIT_SSH_COMMAND` and mount a curated `known_hosts` file.
+The image handles SSH host keys by default with OpenSSH `StrictHostKeyChecking=accept-new` and stores `known_hosts` in `/workspace/state/known_hosts`. For stricter SSH host-key pinning, override `GIT_SSH_COMMAND` and mount a curated `known_hosts` file.
+
+## Mounted Local Paths
+
+If a project uses `local_path`, Kubernetes must mount it so that `sourcescout-readonly` can read and traverse the tree. SourceScout does not chown or chmod mounted external repositories.

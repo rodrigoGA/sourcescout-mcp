@@ -177,12 +177,14 @@ export class RepoSyncManager {
       undefined,
       project,
     );
+    await this.applyManagedPermissions(project);
   }
 
   private async pullExisting(project: RegisteredProject): Promise<void> {
     await this.mustRun("git", ["fetch", "--all", "--prune", "--tags"], project.localPath, project);
     await this.mustRun("git", ["checkout", project.config.branch], project.localPath, project);
     await this.mustRun("git", ["pull", "--ff-only"], project.localPath, project);
+    await this.applyManagedPermissions(project);
   }
 
   private async tryPull(project: RegisteredProject): Promise<boolean> {
@@ -210,7 +212,19 @@ export class RepoSyncManager {
       timeoutMs: this.config.workspace.sync_timeout_seconds * 1000,
       maxOutputBytes: this.config.limits.max_tool_output_bytes,
     });
-    return pull.exitCode === 0 && !pull.timedOut;
+    if (pull.exitCode !== 0 || pull.timedOut) {
+      return false;
+    }
+
+    await this.applyManagedPermissions(project);
+    return true;
+  }
+
+  private async applyManagedPermissions(project: RegisteredProject): Promise<void> {
+    if (!project.managedClone) {
+      return;
+    }
+    await this.mustRun("chmod", ["-R", "u+rwX,go+rX,go-w", project.localPath]);
   }
 
   private async mustRun(command: string, args: string[], cwd?: string, project?: RegisteredProject): Promise<void> {

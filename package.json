@@ -1,7 +1,7 @@
 {
   "name": "sourcescout-mcp",
-  "version": "0.0.4",
-  "description": "SourceScout MCP exposes read-only code search, file inspection, Probe, and Git utilities over MCP HTTP.",
+  "version": "0.0.10",
+  "description": "SourceScout MCP exposes multi-repository read-only shell inspection over MCP HTTP.",
   "type": "module",
   "private": true,
   "packageManager": "pnpm@8.7.6",
@@ -19,12 +19,12 @@
     "@cfworker/json-schema": "^4.1.1",
     "@modelcontextprotocol/node": "2.0.0-alpha.2",
     "@modelcontextprotocol/server": "2.0.0-alpha.2",
-    "@probelabs/probe": "0.6.0-rc316",
-    "minimatch": "^10.0.1",
+    "jsesc": "^3.1.0",
     "yaml": "^2.6.1",
     "zod": "^4.1.0"
   },
   "devDependencies": {
+    "@types/jsesc": "^3.0.3",
     "@types/node": "^22.13.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3",

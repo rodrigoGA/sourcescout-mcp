@@ -1,55 +1,42 @@
 # SourceScout MCP
 
-SourceScout MCP is a small, professional MCP server that lets an LLM answer questions about code across multiple Git projects.
+SourceScout MCP is a small MCP server for inspecting multiple Git projects over HTTP.
 
-It is designed for teams that want useful code intelligence without building an indexing pipeline: no database, no Redis, no vector store, no embedding service, and no mandatory background index. SourceScout keeps local checkouts fresh, runs Probe and Git on demand, and exposes a compact set of read-only MCP tools over HTTP.
-
-## Why SourceScout?
-
-Modern coding agents already know how to reason about code, but they need the right retrieval tools. Plain grep returns line fragments. Vector search requires indexing and can split code in awkward chunks. Probe takes a better path for agents: AST-aware code search, ranked results, complete code blocks, token budgets, and local execution.
-
-SourceScout builds on that idea and adds the operational layer for real repositories:
-
-- **Multi-project registry**: expose backend, frontend, workers, libraries, and legacy repos through one MCP.
-- **No indexing required**: clone or mount repos and query them immediately.
-- **Local and private**: code stays in your infrastructure; tools run inside the container.
-- **LLM-friendly context**: Probe search/extract/query, grep, file reads, symbol listing, and Git history.
-- **Git-provider agnostic**: works with GitHub, GitLab, Bitbucket, Gitea, and plain SSH/HTTPS remotes.
-- **Simple operations**: YAML config, Docker image, health checks, bearer auth, and Kubernetes-ready deployment.
-
-SourceScout is fast to start and easy to operate: for small teams it can run as a tiny HTTP service, and for larger codebases it can keep a persistent workspace volume warm and wake on demand with scale-to-zero setups such as KEDA. It is ready to use as soon as the repos are available.
-
-SourceScout is intentionally read-only. It is meant for agents that investigate, explain, review, onboard, and plan changes before any editor or CI system mutates code.
+It keeps configured repositories available on disk, refreshes managed clones on demand, and exposes a deliberately small tool surface for agents that need to investigate code without a separate indexing service.
 
 ## MCP Tools
 
-SourceScout exposes these tools when enabled in config:
+SourceScout exposes two tools:
 
-- `list_projects`: list configured projects and their sync status.
-- `project_overview`: return a compact map of a repo: top-level paths, file count, common extensions, current head.
-- `search_code`: Probe semantic search with ElasticSearch-style queries and ranked code snippets.
-- `query_code`: Probe AST/structural query for precise code shapes.
-- `extract_code`: Probe extraction for complete code blocks by `file:line`, `file:line-line`, or `file#symbol`.
-- `list_symbols`: Probe symbol table for files with line numbers and nesting.
-- `grep`: grep-style search for logs, config, text, and other non-code files.
-- `read_file`: numbered line-range reads with size and line caps.
-- `list_files`: tracked files with optional path/glob filtering.
-- `git_query`: read-only Git operations.
+- `list_projects`: list configured projects and their last known sync state.
+- `code_inspect_shell`: run a bounded read-only inspection shell command from a configured project's root directory.
 
-`git_query` supports:
+`code_inspect_shell` input is:
 
-- `log`
-- `show_commit`
-- `diff`
-- `changed_files`
-- `tags`
-- `branches`
-- `blame`
-- `search_history_text`
-- `search_history_regex`
-- `show_file_at_revision`
+```json
+{
+  "project_id": "backend",
+  "command": "rg -n \"createUser\" src"
+}
+```
 
-## Configuration Model
+Before running the command, SourceScout calls `ensureProjectFresh(project_id)`. If the project has a usable checkout and `workspace.pull_ttl_seconds` has expired, SourceScout starts a refresh in the background and serves the existing checkout. If the checkout is missing or unusable, it waits for sync to complete.
+
+Useful inspection commands include `ls`, `tree`, `find`, `rg --files`, `rg "pattern"`, `grep -R`, `git grep`, `git status`, `git diff`, `git log`, `git blame`, `cat`, `sed -n 'X,Yp'`, `head`, and `tail`.
+
+Shell output is combined stdout/stderr text. Non-zero shell exit codes are returned as normal tool output, not as MCP errors. SourceScout appends a footer:
+
+```text
+[SourceScout shell status]
+exit_code=0
+duration_ms=12
+timed_out=false
+truncated=false
+```
+
+Internal runner failures, unknown projects, disabled projects, and unavailable projects are returned as MCP tool errors.
+
+## Configuration
 
 Start from `config/projects.local.example.yml` for local development or `config/projects.example.yml` for Docker/Kubernetes.
 
@@ -72,10 +59,25 @@ auth:
   type: bearer
   token_env: CODE_MCP_TOKEN
 
-probe:
-  binary: probe
-  default_search_max_results: 20
-  default_search_max_tokens: 8000
+readiness:
+  require_all_projects_ready: false
+  require_at_least_one_project_ready: true
+
+git:
+  timeout_seconds: 30
+  default_log_limit: 30
+
+shell:
+  readonly_user: sourcescout-readonly
+
+limits:
+  max_tool_output_bytes: 8000000
+  command_timeout_seconds: 300
+
+tools:
+  enabled:
+    - list_projects
+    - code_inspect_shell
 
 projects:
   - id: backend
@@ -94,41 +96,41 @@ projects:
 
 Use `git.url` for SourceScout-managed clones. Use `local_path` for mounted repos. SourceScout never deletes a configured `local_path`; `reclone_on_sync_failure` only applies to managed clones under `workspace.root`.
 
-### Probe Results and Pagination
+## Runtime Safety
 
-Probe does not use offset/page pagination. For `search_code`, SourceScout exposes Probe's `session` and `nextPage` parameters like Probe MCP: omit `session` for a fresh search, then pass the `Session ID` printed by Probe on follow-up searches to avoid results already shown in that session. `nextPage` is a client hint; Probe's cache behavior is driven by the session ID. For other Probe tools, use narrower follow-up calls or extract exact blocks from previous results.
+The Docker image uses two users:
 
-For deeper exploration, agents should issue narrower or follow-up queries, use `extract_code` for exact blocks, or use `grep`/`read_file` for deterministic expansion. `search_code` defaults to Probe MCP-compatible `outline-xml` output and returns Probe's text directly instead of wrapping it in a SourceScout envelope.
+- `sourcescout`: runs the Node application and performs clone/fetch/pull.
+- `sourcescout-readonly`: runs `code_inspect_shell`.
 
-### Limits
+When `shell.readonly_user` is configured, SourceScout invokes:
 
-The config separates command settings from hard caps:
+```bash
+sudo -n -u sourcescout-readonly -- /bin/sh -lc "<command>"
+```
 
-- `probe`: Probe binary setting and SourceScout's Probe search defaults. `search_code` defaults to Probe MCP-compatible `outline-xml` output, `allowTests: false`, `session: "new"`, `default_search_max_results: 20`, and `default_search_max_tokens: 8000`; it also accepts Probe-style `nextPage` as a session pagination hint.
-- `git`: Git-specific defaults, currently `timeout_seconds` and `default_log_limit`.
-- `limits`: global safety caps across tools.
+The image configures sudo only for `sourcescout` to execute `/bin/sh` as `sourcescout-readonly` without a password. Managed clones are owned by `sourcescout`; after a successful clone or pull, SourceScout applies `u+rwX,go+rX,go-w` so the read-only user can traverse and read the checkout without write access.
 
-Recommended defaults are intentionally generous for large repositories and generated source files:
+Mounted `local_path` repositories are not chowned or chmodded by SourceScout. They must already be readable by the configured `shell.readonly_user`.
+
+The shell user may still write anywhere the operating system permits, such as `/tmp`. The safety boundary is the read-only project checkout, output truncation, timeout, and MCP authentication.
+
+## Limits
 
 ```yaml
 limits:
-  max_file_lines: 60000
-  max_file_bytes: 5000000
   max_tool_output_bytes: 8000000
-  max_search_results: 100
-  max_git_log_limit: 200
   command_timeout_seconds: 300
 ```
 
-`max_file_lines` and `max_file_bytes` are large enough for unusually large generated files, while still preventing accidental unbounded reads.
-
+`max_tool_output_bytes` caps combined stdout/stderr before the status footer. If the cap is exceeded, SourceScout truncates output and marks `truncated=true`. `command_timeout_seconds` is a global timeout for the shell command; on timeout SourceScout sends `SIGTERM` to the process group and then `SIGKILL` if needed.
 
 ## Docker
 
 Published image:
 
 ```bash
-docker pull rogo16/sourcescout-mcp:v0.0.4
+docker pull rogo16/sourcescout-mcp:v0.0.10
 ```
 
 ```bash
@@ -136,51 +138,29 @@ docker run --rm -p 8080:8080 \
   -v "$PWD/config/projects.example.yml:/config/projects.yml:ro" \
   -v "$PWD/workspace:/workspace" \
   -e PROJECTS_CONFIG_PATH=/config/projects.yml \
-  rogo16/sourcescout-mcp:v0.0.4
+  rogo16/sourcescout-mcp:v0.0.10
 ```
 
-The image includes Node 22, Probe, Git, OpenSSH client, CA certificates, ripgrep, and tini.
+The image includes Node 22, Git, OpenSSH client, CA certificates, sudo, gosu, tini, and source-inspection utilities including `ls`, `cat`, `head`, `tail`, `sed`, `grep`, `find`, `rg`, `tree`, and `cloc`.
 
-## MCP Registry
-
-SourceScout can be published to the Official MCP Registry as an OCI package. The registry metadata lives in [server.json](server.json), and the Docker image includes the ownership verification label required by the registry.
-
-Publish a release image first:
+## Running Locally
 
 ```bash
-docker build -t rogo16/sourcescout-mcp:v0.0.4 .
-docker push rogo16/sourcescout-mcp:v0.0.4
+pnpm install
+pnpm build
+PROJECTS_CONFIG_PATH=./config/projects.local.example.yml pnpm start
 ```
 
-Then publish the registry metadata:
+Local config does not set `shell.readonly_user`, so commands run as the same OS user as the Node process. Set `SOURCESCOUT_READONLY_USER` or `shell.readonly_user` to force sudo-based execution.
 
-```bash
-mcp-publisher login github
-mcp-publisher publish
-curl "https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.rodrigoGA/sourcescout-mcp"
-```
+Endpoints:
 
-See [docs/publishing.md](docs/publishing.md) for the release checklist.
-
-## Kubernetes
-
-Use:
-
-- a `ConfigMap` for `projects.yml`
-- a `Secret` for `CODE_MCP_TOKEN`
-- a `Secret` for the SSH deploy key
-- a persistent volume mounted at `/workspace`
-
-The image uses OpenSSH `StrictHostKeyChecking=accept-new` by default and stores `known_hosts` in `/workspace/state/known_hosts`, so the baseline Kubernetes manifest does not need an initContainer or a `known_hosts` Secret. For stricter host-key pinning, override `GIT_SSH_COMMAND` and mount a curated `known_hosts` file.
-
-Keep `/live` and `/ready` unauthenticated for platform probes. Protect `/mcp` with bearer auth in non-local deployments.
-
-See [docs/kubernetes.md](docs/kubernetes.md) for a complete baseline manifest.
-
+- `POST /mcp`: MCP Streamable HTTP endpoint.
+- `GET /live`: process liveness.
+- `GET /ready`: readiness based on project sync status.
+- `GET /health`: diagnostics for version, Git, shell runner, and projects.
 
 ## Claude / Agent Integration
-
-### Claude Code HTTP
 
 Run SourceScout:
 
@@ -190,7 +170,7 @@ docker run --rm -p 8080:8080 \
   -v "$PWD/workspace:/workspace" \
   -e PROJECTS_CONFIG_PATH=/config/projects.yml \
   -e CODE_MCP_TOKEN=change-me \
-  rogo16/sourcescout-mcp:v0.0.4
+  rogo16/sourcescout-mcp:v0.0.10
 ```
 
 Add it to Claude Code:
@@ -216,71 +196,44 @@ Equivalent JSON:
 }
 ```
 
-### Claude Desktop
+## Kubernetes
 
-If your Claude Desktop build does not connect directly to local HTTP MCP servers, use a stdio bridge such as `mcp-remote`:
+Use:
 
-```json
-{
-  "mcpServers": {
-    "sourcescout": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "mcp-remote",
-        "http://localhost:8080/mcp",
-        "--header",
-        "Authorization: Bearer change-me"
-      ]
-    }
-  }
-}
-```
+- a `ConfigMap` for `projects.yml`
+- a `Secret` for `CODE_MCP_TOKEN`
+- a `Secret` for Git authentication
+- a persistent volume mounted at `/workspace`
 
-Keep the SourceScout Docker container running separately.
+The image uses OpenSSH `StrictHostKeyChecking=accept-new` by default and stores `known_hosts` in `/workspace/state/known_hosts`, so the baseline Kubernetes manifest does not need an initContainer or a `known_hosts` Secret. For stricter host-key pinning, override `GIT_SSH_COMMAND` and mount a curated `known_hosts` file.
 
-## Running Locally
+Keep `/live` and `/ready` unauthenticated for platform probes. Protect `/mcp` with bearer auth in non-local deployments.
 
-```bash
-pnpm install
-pnpm build
-PROJECTS_CONFIG_PATH=./config/projects.local.example.yml pnpm start
-```
+See [docs/kubernetes.md](docs/kubernetes.md) for a complete baseline manifest.
 
-Endpoints:
-
-- `POST /mcp`: MCP Streamable HTTP endpoint.
-- `GET /live`: process liveness.
-- `GET /ready`: readiness based on project sync status.
-- `GET /health`: diagnostics for Probe, Git, and projects.
-
-## Repository Configuration Examples
+## Git Authentication
 
 SourceScout receives normal Git clone URLs. Use the same protocol you would use from a CI job or read-only automation account. For private repositories, generate credentials with the minimum read-only access needed to clone and fetch the repository.
 
 Recommended order:
 
-- **SSH deploy key** for private repos when your provider supports it.
-- **HTTPS token via mounted `kubernetes.io/basic-auth` Secret** when SSH is not practical on Kubernetes.
-- **Token in the URL** only for local experiments or short-lived automation, because Git can persist the remote URL inside `.git/config`.
+- SSH deploy key for private repos when your provider supports it.
+- HTTPS token via mounted `kubernetes.io/basic-auth` Secret when SSH is not practical on Kubernetes.
+- Token in the URL only for local experiments or short-lived automation, because Git can persist the remote URL inside `.git/config`.
 
 ### Public HTTPS Repository
 
-No credentials are required.
-
 ```yaml
 projects:
-  - id: probe
-    name: Probe
+  - id: sourcescout
+    name: SourceScout MCP
     git:
-      url: https://github.com/probelabs/probe.git
+      url: https://github.com/rodrigoGA/sourcescout-mcp.git
     branch: main
     enabled: true
 ```
 
 ### Private Repository With SSH Deploy Key
-
-Prefer a read-only deploy key or a read-only machine-user SSH key.
 
 ```yaml
 projects:
@@ -293,34 +246,9 @@ projects:
         path: /run/secrets/sourcescout/git-auth/gitlab
     branch: main
     enabled: true
-
-  - id: service
-    name: GitHub Service
-    git:
-      url: git@github.com:company/service.git
-      auth:
-        type: ssh
-        path: /run/secrets/sourcescout/git-auth/github
-    branch: main
-    enabled: true
 ```
-
-Docker example:
-
-```bash
-docker run --rm -p 8080:8080 \
-  -v "$PWD/config/projects.yml:/config/projects.yml:ro" \
-  -v "$PWD/workspace:/workspace" \
-  -v "$PWD/secrets/gitlab-ssh:/run/secrets/sourcescout/git-auth/gitlab:ro" \
-  -e CODE_MCP_TOKEN=change-me \
-  rogo16/sourcescout-mcp:v0.0.4
-```
-
-The image copies mounted Git auth Secret files into `/home/node/.sourcescout-git-auth`, fixes permissions, and uses `StrictHostKeyChecking=accept-new` with project-specific `known_hosts` files.
 
 ### Private Repository With HTTPS Token
-
-On Kubernetes, use per-project `git.auth` with a mounted `kubernetes.io/basic-auth` Secret. SourceScout reads the mounted Secret files and configures Git for that project before cloning, so the token is not placed in `projects.yml`, repo URLs, or cloned repository remotes.
 
 ```yaml
 projects:
@@ -333,32 +261,9 @@ projects:
         path: /run/secrets/sourcescout/git-auth/github
     branch: main
     enabled: true
-
-  - id: gitlab-private
-    name: GitLab Private Repo
-    git:
-      url: https://gitlab.example.com/org/private-repo.git
-      auth:
-        type: httpsToken
-        path: /run/secrets/sourcescout/git-auth/gitlab
-    branch: main
-    enabled: true
 ```
 
-Example Kubernetes Secret:
-
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: sourcescout-git-auth
-type: kubernetes.io/basic-auth
-stringData:
-  username: YOUR_GIT_USERNAME
-  password: YOUR_READ_ONLY_TOKEN
-```
-
-Mount each Secret under `/run/secrets/sourcescout/git-auth/<name>` and point the matching project auth `path` there. The entrypoint copies mounted Git auth Secrets into `/home/node/.sourcescout-git-auth` with `0600` permissions before the process drops to the `node` user.
+Mount each Secret under `/run/secrets/sourcescout/git-auth/<name>` and point the matching project auth `path` there. The entrypoint copies mounted Git auth Secrets into `/home/sourcescout/.sourcescout-git-auth` with `0600` permissions before the process drops to the `sourcescout` user.
 
 For Docker or other non-Kubernetes deployments, a mounted `git-credentials` file is also supported:
 
@@ -368,26 +273,18 @@ docker run --rm -p 8080:8080 \
   -v "$PWD/workspace:/workspace" \
   -v "$PWD/secrets/git-credentials:/run/secrets/sourcescout/git-credentials:ro" \
   -e CODE_MCP_TOKEN=change-me \
-  rogo16/sourcescout-mcp:v0.0.4
+  rogo16/sourcescout-mcp:v0.0.10
 ```
 
 Token guidance:
 
-- GitHub: use a fine-grained personal access token scoped to the selected repositories with read-only Contents access.
-- GitLab: prefer a deploy token or project/group access token with `read_repository`; for a personal access token, use the GitLab username as the credential username and a token with `read_repository`.
+- GitHub: use a fine-grained personal access token scoped to selected repositories with read-only Contents access.
+- GitLab: prefer a deploy token or project/group access token with `read_repository`.
 - Bitbucket Cloud: use an app password or API token with repository read access.
 - Gitea/Forgejo: use a token or service account with repository read access.
 
-### HTTPS Token In URL
+## MCP Registry
 
-This is simple but less clean because the token can be stored in the cloned repo's Git remote config.
+SourceScout can be published to the Official MCP Registry as an OCI package. The registry metadata lives in [server.json](server.json), and the Docker image includes the ownership verification label required by the registry.
 
-```yaml
-projects:
-  - id: gitlab-token-url
-    name: GitLab Token URL
-    git:
-      url: https://deploy-token-user:deploy-token@gitlab.example.com/org/backend.git
-    branch: main
-    enabled: true
-```
+See [docs/publishing.md](docs/publishing.md) for the release checklist.

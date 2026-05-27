@@ -23,9 +23,9 @@ projects:
     const config = await loadConfig(configPath);
     expect(config.server.name).toBe("SourceScout MCP");
     expect(config.projects[0]?.branch).toBe("main");
-    expect(config.probe.default_search_max_results).toBe(20);
-    expect(config.probe.default_search_max_tokens).toBe(8000);
-    expect(config.limits.max_file_lines).toBe(60000);
+    expect(config.tools.enabled).toEqual(["list_projects", "code_inspect_shell"]);
+    expect(config.shell.readonly_user).toBeUndefined();
+    expect(config.limits.max_tool_output_bytes).toBe(8000000);
   });
 
   it("loads per-project Git auth config", async () => {
