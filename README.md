@@ -1,19 +1,21 @@
 # SourceScout MCP
 
-SourceScout MCP is a small MCP server for inspecting multiple Git projects over HTTP.
+SourceScout MCP is a lightweight, self-hosted MCP server that helps coding agents understand multiple Git projects over HTTP.
 
-It keeps configured repositories available on disk, refreshes managed clones on demand, and exposes a deliberately small tool surface for agents that need to investigate code without a separate indexing service.
+It keeps configured repositories available on disk, refreshes managed clones on demand, and gives agents a small tool surface for answering questions about how an application actually behaves.
 
-Modern coding agents are already effective shell users. SourceScout gives them a read-only project shell over MCP, so they can search with regular expressions, inspect exact files, follow Git history, and measure code layout without building or maintaining an index.
+Use it when an agent needs to trace a flow, find the handler for a case, explain why an error is raised, understand where a value changes, inspect Git history, or follow behavior across several repositories.
 
-For many code-inspection workflows, this simple approach is fast and token-efficient: the agent can ask for the next narrow slice of context with tools like `rg`, `git grep`, `find`, `sed`, and `cloc`, instead of receiving large result sets. It is also easy to operate: keep repositories on disk, let the service scale down when idle, and start it when an agent needs source context.
+SourceScout does not build an index. Instead, it lets agents navigate the real checkout with familiar tools like `rg`, `git grep`, `find`, `sed`, `git blame`, and `cloc`. In practice, this works well because modern coding agents are already good at narrowing a question into the exact files, matches, call sites, and history they need.
+
+The result is a simple, token-efficient way to give agents source context: no indexing pipeline, no separate search backend, and no need to keep the service hot when it is not being used.
 
 ## MCP Tools
 
 SourceScout exposes two tools:
 
 - `list_projects`: list configured projects and their last known sync state.
-- `code_inspect_shell`: run a bounded read-only inspection shell command from a configured project's root directory.
+- `code_inspect_shell`: inspect a configured project from its root directory so an agent can answer behavior questions with evidence from the code.
 
 `code_inspect_shell` input is:
 
