@@ -1,7 +1,7 @@
 import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ShellAdapter } from "../src/adapters/shellAdapter.js";
 import { runShellCommand } from "../src/shellRunner.js";
 import type { RegisteredProject } from "../src/types.js";
@@ -9,8 +9,13 @@ import { testConfig } from "./helpers.js";
 
 const originalPath = process.env.PATH;
 
+beforeEach(() => {
+  vi.spyOn(console, "log").mockImplementation(() => undefined);
+});
+
 afterEach(() => {
   process.env.PATH = originalPath;
+  vi.restoreAllMocks();
 });
 
 describe("ShellAdapter", () => {
@@ -20,8 +25,11 @@ describe("ShellAdapter", () => {
 
     const output = await adapter.inspect(project(root), "pwd");
 
-    expect(output).toContain(`${root}\n`);
-    expect(output).toContain("[SourceScout shell status]\nexit_code=0\n");
+    expect(output).toContain(`Exit code: 0\nOutput lines: 1\nOutput:\n${root}\n`);
+    expect(output).not.toContain("Wall time:");
+    expect(output).not.toContain("Timed out: false");
+    expect(output).not.toContain("Truncated: false");
+    expect(output).not.toContain("Sanitized: false");
   });
 
   it("keeps non-zero shell exit codes as normal tool output", async () => {
@@ -30,8 +38,18 @@ describe("ShellAdapter", () => {
 
     const output = await adapter.inspect(project(root), "printf 'before\\n'; exit 7");
 
-    expect(output).toContain("before\n");
-    expect(output).toContain("exit_code=7\n");
+    expect(output).toContain("Exit code: 7\nOutput lines: 1\nOutput:\nbefore\n");
+  });
+
+  it("omits output metadata when the shell produces no output", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "sourcescout-shell-"));
+    const adapter = new ShellAdapter(testConfig());
+
+    const output = await adapter.inspect(project(root), "exit 1");
+
+    expect(output).toBe("Exit code: 1\n");
+    expect(output).not.toContain("Output:");
+    expect(output).not.toContain("Output lines:");
   });
 
   it("truncates combined stdout and stderr using max_tool_output_bytes", async () => {
@@ -48,8 +66,7 @@ describe("ShellAdapter", () => {
     const output = await adapter.inspect(project(root), "printf abc; printf def >&2");
 
     expect(output).toContain("abcde");
-    expect(output).toContain("[SourceScout: output truncated]");
-    expect(output).toContain("truncated=true\n");
+    expect(output).toContain("Exit code: 0\nTruncated: true\nOutput lines: 1\nOutput:\nabcde\n");
   });
 
   it("escapes NUL and non-printable control characters before returning text", async () => {
@@ -60,7 +77,7 @@ describe("ShellAdapter", () => {
 
     expect(output).toContain("a\\0b\\x01\t\n");
     expect(output).not.toContain("\0");
-    expect(output).toContain("sanitized=true\n");
+    expect(output).toContain("Sanitized: true\n");
   });
 
   it("terminates the shell process group on timeout", async () => {
@@ -73,6 +90,47 @@ describe("ShellAdapter", () => {
     });
 
     expect(result.timedOut).toBe(true);
+  });
+
+  it("reports timeout metadata before shell output", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "sourcescout-shell-"));
+    const adapter = new ShellAdapter(
+      testConfig({
+        limits: {
+          max_tool_output_bytes: 1000,
+          command_timeout_seconds: 1,
+        },
+      }),
+    );
+
+    const output = await adapter.inspect(project(root), "printf 'before\\n'; sleep 2");
+
+    expect(output).toMatch(
+      /^Exit code: 143\nTimed out: true\nWall time: \d+\.\d{2} seconds\nOutput lines: 1\nOutput:\nbefore\n$/,
+    );
+  });
+
+  it("logs shell command metadata without output", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "sourcescout-shell-"));
+    const adapter = new ShellAdapter(testConfig());
+
+    await adapter.inspect(project(root), "printf 'ok\\n'");
+
+    expect(console.log).toHaveBeenCalledTimes(1);
+    const event = JSON.parse(vi.mocked(console.log).mock.calls[0]?.[0] as string);
+    expect(event).toMatchObject({
+      event: "code_inspect_shell",
+      project_id: "app",
+      cwd: root,
+      command: "printf 'ok\\n'",
+      exit_code: 0,
+      timed_out: false,
+      truncated: false,
+      sanitized: false,
+      readonly_user: null,
+    });
+    expect(event.duration_ms).toEqual(expect.any(Number));
+    expect(event.output).toBeUndefined();
   });
 
   it("uses sudo to run as the configured read-only user", async () => {

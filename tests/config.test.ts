@@ -26,6 +26,7 @@ projects:
     expect(config.tools.enabled).toEqual(["list_projects", "code_inspect_shell"]);
     expect(config.shell.readonly_user).toBeUndefined();
     expect(config.limits.max_tool_output_bytes).toBe(8000000);
+    expect(config.readiness.mode).toBe("one_project");
   });
 
   it("loads per-project Git auth config", async () => {
@@ -51,5 +52,27 @@ projects:
       type: "httpsToken",
       path: "/run/secrets/sourcescout/git-auth/gitlab",
     });
+  });
+
+  it("maps legacy readiness flags to readiness mode", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "sourcescout-config-"));
+    const configPath = path.join(dir, "projects.yml");
+    await writeFile(
+      configPath,
+      `
+readiness:
+  require_all_projects_ready: false
+  require_at_least_one_project_ready: false
+projects:
+  - id: app
+    name: App
+    git:
+      url: git@example.com:org/app.git
+`,
+      "utf8",
+    );
+
+    const config = await loadConfig(configPath);
+    expect(config.readiness.mode).toBe("immediate");
   });
 });

@@ -17,8 +17,7 @@ auth:
   token_env: CODE_MCP_TOKEN
 
 readiness:
-  require_all_projects_ready: false
-  require_at_least_one_project_ready: false
+  mode: immediate
 
 git:
   timeout_seconds: 30

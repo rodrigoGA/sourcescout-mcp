@@ -2,7 +2,7 @@
 
 This is the baseline production shape for SourceScout MCP.
 
-- Docker image: `rogo16/sourcescout-mcp:v0.0.10`
+- Docker image: `rogo16/sourcescout-mcp:v0.0.13`
 - a `ConfigMap` for `projects.yml`
 - a bearer token `Secret` for MCP HTTP auth
 - a Kubernetes Secret for Git authentication
@@ -65,8 +65,7 @@ data:
       type: bearer
       token_env: CODE_MCP_TOKEN
     readiness:
-      require_all_projects_ready: false
-      require_at_least_one_project_ready: true
+      mode: one_project
     git:
       timeout_seconds: 30
       default_log_limit: 30
@@ -116,7 +115,7 @@ spec:
     spec:
       containers:
         - name: sourcescout-mcp
-          image: rogo16/sourcescout-mcp:v0.0.10
+          image: rogo16/sourcescout-mcp:v0.0.13
           ports:
             - containerPort: 8080
           env:

@@ -7,8 +7,8 @@ This checklist publishes SourceScout MCP where other teams can discover and inst
 SourceScout is published as a Docker/OCI package. The registry verifies OCI package ownership by reading the `io.modelcontextprotocol.server.name` label from the image, so build and push the image before publishing `server.json`.
 
 ```bash
-docker build -t rogo16/sourcescout-mcp:v0.0.10 .
-docker push rogo16/sourcescout-mcp:v0.0.10
+docker build -t rogo16/sourcescout-mcp:v0.0.13 .
+docker push rogo16/sourcescout-mcp:v0.0.13
 ```
 
 Install `mcp-publisher` if needed:

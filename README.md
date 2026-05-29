@@ -54,8 +54,7 @@ auth:
   token_env: CODE_MCP_TOKEN
 
 readiness:
-  require_all_projects_ready: false
-  require_at_least_one_project_ready: true
+  mode: one_project
 
 git:
   timeout_seconds: 30
@@ -90,6 +89,12 @@ projects:
 
 Use `git.url` for SourceScout-managed clones. Use `local_path` for mounted repos. SourceScout never deletes a configured `local_path`; `reclone_on_sync_failure` only applies to managed clones under `workspace.root`.
 
+`readiness.mode` controls when `/ready` returns 200:
+
+- `immediate`: as soon as the HTTP server is listening.
+- `one_project`: after at least one project syncs successfully.
+- `all_projects`: after all enabled projects sync successfully.
+
 ## Runtime Safety
 
 The Docker image uses two users:
@@ -119,14 +124,14 @@ limits:
   command_timeout_seconds: 300
 ```
 
-`max_tool_output_bytes` caps combined stdout/stderr returned by the shell. If the cap is exceeded, SourceScout truncates the output and reports it as truncated. `command_timeout_seconds` is a global timeout for the shell command; on timeout SourceScout sends `SIGTERM` to the process group and then `SIGKILL` if needed.
+`max_tool_output_bytes` caps combined stdout/stderr returned by the shell. The default is `8000000` bytes. If the cap is exceeded, SourceScout truncates the output and reports it as truncated. `command_timeout_seconds` is a global timeout for the shell command; on timeout SourceScout sends `SIGTERM` to the process group and then `SIGKILL` if needed.
 
 ## Docker
 
 Published image:
 
 ```bash
-docker pull rogo16/sourcescout-mcp:v0.0.10
+docker pull rogo16/sourcescout-mcp:v0.0.13
 ```
 
 ```bash
@@ -134,7 +139,7 @@ docker run --rm -p 8080:8080 \
   -v "$PWD/config/projects.example.yml:/config/projects.yml:ro" \
   -v "$PWD/workspace:/workspace" \
   -e PROJECTS_CONFIG_PATH=/config/projects.yml \
-  rogo16/sourcescout-mcp:v0.0.10
+  rogo16/sourcescout-mcp:v0.0.13
 ```
 
 The image includes Node 22, Git, OpenSSH client, CA certificates, sudo, gosu, tini, and source-inspection utilities including `ls`, `cat`, `head`, `tail`, `sed`, `grep`, `find`, `rg`, `tree`, and `cloc`.
@@ -166,7 +171,7 @@ docker run --rm -p 8080:8080 \
   -v "$PWD/workspace:/workspace" \
   -e PROJECTS_CONFIG_PATH=/config/projects.yml \
   -e CODE_MCP_TOKEN=change-me \
-  rogo16/sourcescout-mcp:v0.0.10
+  rogo16/sourcescout-mcp:v0.0.13
 ```
 
 Add it to Claude Code:
@@ -269,7 +274,7 @@ docker run --rm -p 8080:8080 \
   -v "$PWD/workspace:/workspace" \
   -v "$PWD/secrets/git-credentials:/run/secrets/sourcescout/git-credentials:ro" \
   -e CODE_MCP_TOKEN=change-me \
-  rogo16/sourcescout-mcp:v0.0.10
+  rogo16/sourcescout-mcp:v0.0.13
 ```
 
 Token guidance:

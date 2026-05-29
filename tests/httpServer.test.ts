@@ -2,7 +2,7 @@ import { mkdtemp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { McpServer } from "@modelcontextprotocol/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { startHttpServer } from "../src/httpServer.js";
 import { buildMcpServer } from "../src/mcpTools.js";
@@ -11,6 +11,56 @@ import { RepoSyncManager } from "../src/repoSyncManager.js";
 import { testConfig } from "./helpers.js";
 
 describe("HTTP MCP server", () => {
+  it("returns ready during startup sync when readiness mode is immediate", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "sourcescout-http-"));
+    const baseConfig = testConfig();
+    const config = testConfig({
+      server: { name: "SourceScout MCP", port: 0 },
+      workspace: {
+        ...baseConfig.workspace,
+        root: path.join(root, "repos"),
+        state_path: path.join(root, "state"),
+      },
+      readiness: { mode: "immediate" },
+      projects: [
+        {
+          id: "app",
+          name: "App",
+          git: {
+            url: "git@example.com:org/app.git",
+          },
+          branch: "main",
+          enabled: true,
+        },
+      ],
+    });
+    const registry = await ProjectRegistry.create(config);
+    const syncManager = {
+      isStartupSyncInProgress: () => true,
+    } as RepoSyncManager;
+    const httpServer = await startHttpServer({
+      config,
+      registry,
+      syncManager,
+      createMcpServer: () => buildMcpServer(config, registry, syncManager),
+    });
+
+    try {
+      const response = await fetch(`http://127.0.0.1:${httpServer.port}/ready`);
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body).toMatchObject({
+        status: "ready",
+        projects_ready: 0,
+        readiness_mode: "immediate",
+        startup_sync_in_progress: true,
+      });
+    } finally {
+      await httpServer.close();
+    }
+  });
+
   it("handles concurrent stateless Streamable HTTP tool calls", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "sourcescout-http-"));
     const baseConfig = testConfig();
@@ -104,6 +154,7 @@ describe("HTTP MCP server", () => {
       createMcpServer: () => buildMcpServer(config, registry, syncManager),
     });
 
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
     try {
       const response = await postMcp(`http://127.0.0.1:${httpServer.port}/mcp`, {
         jsonrpc: "2.0",
@@ -112,10 +163,10 @@ describe("HTTP MCP server", () => {
         params: { name: "code_inspect_shell", arguments: { project_id: "app", command: "printf 'hello\\n'" } },
       });
 
-      expect(toolText(response)).toContain("hello\n");
-      expect(toolText(response)).toContain("[SourceScout shell status]\nexit_code=0\n");
+      expect(toolText(response)).toContain("Exit code: 0\nOutput lines: 1\nOutput:\nhello\n");
       expect(response.result?.structuredContent).toBeUndefined();
     } finally {
+      logSpy.mockRestore();
       await httpServer.close();
     }
   });

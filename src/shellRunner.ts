@@ -89,9 +89,9 @@ export function runShellCommand(command: string, options: RunShellCommandOptions
     child.stdout?.on("data", collect);
     child.stderr?.on("data", collect);
     child.on("error", (error) => finish(null, error.message));
-    child.on("close", (exitCode) => {
+    child.on("close", (exitCode, signal) => {
       closed = true;
-      finish(exitCode);
+      finish(exitCode ?? signalExitCode(signal));
     });
   });
 }
@@ -121,6 +121,32 @@ function signalProcessGroup(pid: number | undefined, signal: NodeJS.Signals, fal
   } catch {
     fallback();
   }
+}
+
+function signalExitCode(signal: NodeJS.Signals | null): number | null {
+  if (!signal) {
+    return null;
+  }
+
+  const signalNumbers: Partial<Record<NodeJS.Signals, number>> = {
+    SIGHUP: 1,
+    SIGINT: 2,
+    SIGQUIT: 3,
+    SIGILL: 4,
+    SIGTRAP: 5,
+    SIGABRT: 6,
+    SIGBUS: 7,
+    SIGFPE: 8,
+    SIGKILL: 9,
+    SIGUSR1: 10,
+    SIGSEGV: 11,
+    SIGUSR2: 12,
+    SIGPIPE: 13,
+    SIGALRM: 14,
+    SIGTERM: 15,
+  };
+  const signalNumber = signalNumbers[signal];
+  return signalNumber === undefined ? null : 128 + signalNumber;
 }
 
 function appendLine(output: string, line: string): string {

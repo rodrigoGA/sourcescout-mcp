@@ -92,13 +92,10 @@ function getReadiness(context: HttpServerContext): { ready: boolean; body: Recor
   let ready = true;
   let reason: string | undefined;
 
-  if (context.syncManager.isStartupSyncInProgress()) {
-    ready = false;
-    reason = "startup_sync_in_progress";
-  } else if (context.config.readiness.require_all_projects_ready && projectsReady !== projectsTotal) {
+  if (context.config.readiness.mode === "all_projects" && projectsReady !== projectsTotal) {
     ready = false;
     reason = "not_all_projects_ready";
-  } else if (context.config.readiness.require_at_least_one_project_ready && projectsReady < 1) {
+  } else if (context.config.readiness.mode === "one_project" && projectsReady < 1) {
     ready = false;
     reason = "no_project_ready";
   }
@@ -111,6 +108,8 @@ function getReadiness(context: HttpServerContext): { ready: boolean; body: Recor
       projects_total: projectsTotal,
       projects_ready: projectsReady,
       projects_error: projectsError,
+      readiness_mode: context.config.readiness.mode,
+      startup_sync_in_progress: context.syncManager.isStartupSyncInProgress(),
     },
   };
 }

@@ -1,6 +1,6 @@
 {
   "name": "sourcescout-mcp",
-  "version": "0.0.10",
+  "version": "0.0.13",
   "description": "SourceScout MCP exposes multi-repository read-only shell inspection over MCP HTTP.",
   "type": "module",
   "private": true,

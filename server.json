@@ -3,7 +3,7 @@
   "name": "io.github.rodrigoGA/sourcescout-mcp",
   "title": "SourceScout MCP",
   "description": "Read-only multi-repository shell inspection over HTTP.",
-  "version": "0.0.10",
+  "version": "0.0.13",
   "websiteUrl": "https://github.com/rodrigoGA/sourcescout-mcp",
   "repository": {
     "url": "https://github.com/rodrigoGA/sourcescout-mcp",
@@ -12,7 +12,7 @@
   "packages": [
     {
       "registryType": "oci",
-      "identifier": "docker.io/rogo16/sourcescout-mcp:v0.0.10",
+      "identifier": "docker.io/rogo16/sourcescout-mcp:v0.0.13",
       "runtimeHint": "docker",
       "runtimeArguments": [
         {

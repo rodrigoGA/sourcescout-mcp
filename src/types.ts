@@ -49,9 +49,10 @@ export interface AuthConfig {
   token_env: string;
 }
 
+export type ReadinessMode = "immediate" | "one_project" | "all_projects";
+
 export interface ReadinessConfig {
-  require_all_projects_ready: boolean;
-  require_at_least_one_project_ready: boolean;
+  mode: ReadinessMode;
 }
 
 export interface GitConfig {

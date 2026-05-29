@@ -1,9 +1,10 @@
 import { readFile } from "node:fs/promises";
 import { parse } from "yaml";
 import { z } from "zod";
-import { TOOL_NAMES, type AppConfig } from "./types.js";
+import { TOOL_NAMES, type AppConfig, type ReadinessMode } from "./types.js";
 
 const toolNameSchema = z.enum(TOOL_NAMES);
+const readinessModeSchema = z.enum(["immediate", "one_project", "all_projects"]);
 const defaultServer = { name: "SourceScout MCP", port: 8080 };
 const defaultWorkspace = {
   root: "/workspace/repos",
@@ -16,8 +17,7 @@ const defaultWorkspace = {
 };
 const defaultAuth = { enabled: false, type: "bearer" as const, token_env: "CODE_MCP_TOKEN" };
 const defaultReadiness = {
-  require_all_projects_ready: false,
-  require_at_least_one_project_ready: true,
+  mode: "one_project" as const,
 };
 const defaultGit = {
   timeout_seconds: 30,
@@ -71,10 +71,14 @@ const configSchema = z.object({
     .default(defaultAuth),
   readiness: z
     .object({
-      require_all_projects_ready: z.boolean().default(false),
-      require_at_least_one_project_ready: z.boolean().default(true),
+      mode: readinessModeSchema.optional(),
+      require_all_projects_ready: z.boolean().optional(),
+      require_at_least_one_project_ready: z.boolean().optional(),
     })
-    .default(defaultReadiness),
+    .default(defaultReadiness)
+    .transform((readiness) => ({
+      mode: readiness.mode ?? legacyReadinessMode(readiness),
+    })),
   git: z
     .object({
       timeout_seconds: z.number().int().positive().default(30),
@@ -153,4 +157,17 @@ export async function loadConfig(path = process.env.PROJECTS_CONFIG_PATH ?? "/co
   }
 
   return config;
+}
+
+function legacyReadinessMode(readiness: {
+  require_all_projects_ready?: boolean;
+  require_at_least_one_project_ready?: boolean;
+}): ReadinessMode {
+  if (readiness.require_all_projects_ready) {
+    return "all_projects";
+  }
+  if (readiness.require_at_least_one_project_ready === false) {
+    return "immediate";
+  }
+  return "one_project";
 }

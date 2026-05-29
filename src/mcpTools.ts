@@ -57,7 +57,7 @@ export function buildMcpServer(
       {
         title: "Code Inspect Shell",
         description:
-          "Run a bounded read-only inspection shell command from the configured project's root directory. Use this to inspect source code, understand behavior, trace implementations, measure code composition, and review Git history without modifying the checkout. Useful commands include ls, tree, find, cloc, rg --files, rg \"pattern\", grep -R, git grep, git status, git diff, git log, git blame, cat, sed -n 'X,Yp', head, and tail. Output is combined stdout/stderr text with exit status metadata.",
+          "Run a bounded read-only inspection shell command from the configured project's root directory. Use this to inspect source code, understand behavior, trace implementations, measure code composition, and review Git history without modifying the checkout. Useful commands include ls, tree, find, cloc, rg --files, rg \"pattern\", grep -R, git grep, git status, git diff, git log, git blame, cat, sed -n 'X,Yp', head, and tail. Output starts with command metadata such as Exit code and optional truncation or timeout flags, followed by combined stdout/stderr.",
         inputSchema: z.object({
           project_id: z.string().describe("Configured SourceScout project ID."),
           command: z

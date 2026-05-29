@@ -12,6 +12,7 @@ export class ShellAdapter {
       timeoutMs: this.config.limits.command_timeout_seconds * 1000,
       maxOutputBytes: this.config.limits.max_tool_output_bytes,
     });
+    logShellResult(project, command, this.config.shell.readonly_user, result);
 
     if (result.exitCode === null) {
       throw new SourceScoutError("SHELL_RUNNER_FAILED", result.output || "failed to start shell runner", 500, {
@@ -45,24 +46,62 @@ export class ShellAdapter {
 }
 
 function formatShellResult(result: ShellCommandResult): string {
-  let output = result.output;
-  if (result.truncated) {
-    output = appendLine(output, "[SourceScout: output truncated]");
+  const metadata = formatShellMetadata(result);
+  if (result.output.length === 0) {
+    return `${metadata}\n`;
   }
 
-  const body = output.length === 0 ? "" : `${output}${output.endsWith("\n") ? "" : "\n"}`;
-  const footer = [
-    "[SourceScout shell status]",
-    `exit_code=${result.exitCode ?? "null"}`,
-    `duration_ms=${result.durationMs}`,
-    `timed_out=${result.timedOut}`,
-    `truncated=${result.truncated}`,
-    `sanitized=${result.sanitized}`,
-  ].join("\n");
-
-  return `${body}${footer}\n`;
+  const output = result.output.endsWith("\n") ? result.output : `${result.output}\n`;
+  return `${metadata}\nOutput:\n${output}`;
 }
 
-function appendLine(output: string, line: string): string {
-  return `${output}${output.endsWith("\n") || output.length === 0 ? "" : "\n"}${line}`;
+function formatShellMetadata(result: ShellCommandResult): string {
+  const lines = [`Exit code: ${result.exitCode ?? "null"}`];
+  if (result.timedOut) {
+    lines.push("Timed out: true", `Wall time: ${formatSeconds(result.durationMs)} seconds`);
+  }
+  if (result.truncated) {
+    lines.push("Truncated: true");
+  }
+  if (result.sanitized) {
+    lines.push("Sanitized: true");
+  }
+  if (result.output.length > 0) {
+    lines.push(`Output lines: ${countOutputLines(result.output)}`);
+  }
+  return lines.join("\n");
+}
+
+function countOutputLines(output: string): number {
+  if (output.length === 0) {
+    return 0;
+  }
+  const trailingNewline = output.endsWith("\n") ? 1 : 0;
+  return output.split("\n").length - trailingNewline;
+}
+
+function formatSeconds(durationMs: number): string {
+  return (durationMs / 1000).toFixed(2);
+}
+
+function logShellResult(
+  project: RegisteredProject,
+  command: string,
+  readonlyUser: string | undefined,
+  result: ShellCommandResult,
+): void {
+  console.log(
+    JSON.stringify({
+      event: "code_inspect_shell",
+      project_id: project.config.id,
+      cwd: result.cwd,
+      command,
+      exit_code: result.exitCode,
+      duration_ms: result.durationMs,
+      timed_out: result.timedOut,
+      truncated: result.truncated,
+      sanitized: result.sanitized,
+      readonly_user: readonlyUser ?? null,
+    }),
+  );
 }

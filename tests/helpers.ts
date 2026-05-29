@@ -24,7 +24,7 @@ export function testConfig(overrides: TestConfigOverrides = {}): AppConfig {
       reclone_on_sync_failure: true,
     },
     auth: { enabled: false, type: "bearer", token_env: "CODE_MCP_TOKEN" },
-    readiness: { require_all_projects_ready: false, require_at_least_one_project_ready: true },
+    readiness: { mode: "one_project" },
     git: {
       timeout_seconds: 30,
       default_log_limit: 30,
